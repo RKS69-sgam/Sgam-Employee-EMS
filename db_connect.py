@@ -18,17 +18,22 @@ def initialize_firebase():
             if st.secrets.get("firebase_config"):
                 st.info("✅ Firebase: Streamlit Secrets का उपयोग कर रहा है।")
                 
-                # FIX 1: AttrDict को मानक Python dict में बदलें
+                # 1. AttrDict को मानक Python dict में बदलें
                 service_account_info_attrdict = st.secrets["firebase_config"]
-                service_account_info_dict = dict(service_account_info_attrdict) 
-
-                # FIX 2: डिक्शनरी को JSON स्ट्रिंग में बदलें
-                json_string = json.dumps(service_account_info_dict)
+                final_credentials = dict(service_account_info_attrdict)
                 
-                # FIX 3: \n को ठीक करें और वापस डिक्शनरी में लोड करें
-                json_string_fixed = json_string.replace('\\n', '\n')
-                final_credentials = json.loads(json_string_fixed)
+                # 2. FIX: private_key को साफ़ करना
+                # Streamlit Secrets में private_key एक लंबी स्ट्रिंग के रूप में आती है
+                # जिसमें '-----BEGIN PRIVATE KEY-----\n' आदि शामिल हैं।
+                # हम JSON serialization से बचते हैं और सिर्फ private_key को ठीक करते हैं।
 
+                # .toml फ़ाइल में 'private_key' ट्रिपल कोट्स में होना चाहिए
+                # यदि नहीं है, तो हमें मैन्युअल रूप से \n को बदलना पड़ सकता है:
+                
+                # यदि private_key एक string है जिसमें literal \n है, तो उसे ठीक करें।
+                if isinstance(final_credentials.get('private_key'), str):
+                     final_credentials['private_key'] = final_credentials['private_key'].replace('\\n', '\n')
+                
                 cred = credentials.Certificate(final_credentials)
             
             else:
@@ -82,4 +87,5 @@ def delete_employee(employee_id):
     if db:
 
         db.collection(EMPLOYEE_COLLECTION).document(employee_id).delete()
+
 
