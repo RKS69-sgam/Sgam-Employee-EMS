@@ -14,36 +14,39 @@ def initialize_firebase():
     try:
         if not firebase_admin._apps:
             
+            # --- Cloud या Local की जाँच करें ---
             if st.secrets.get("firebase_config"):
                 st.info("✅ Firebase: Streamlit Secrets का उपयोग कर रहा है।")
                 
-                # FIX: Secrets को पहले JSON स्ट्रिंग में बदलें, फिर \n को ठीक करें।
-                # यह सुनिश्चित करता है कि private_key में न्यूलाइन कैरेक्टर सही ढंग से डाले गए हैं।
-                service_account_info_dict = st.secrets["firebase_config"]
+                # FIX 1: AttrDict को मानक Python dict में बदलें
+                service_account_info_attrdict = st.secrets["firebase_config"]
+                service_account_info_dict = dict(service_account_info_attrdict) 
 
-                # डिक्शनरी को JSON स्ट्रिंग में बदलें
+                # FIX 2: डिक्शनरी को JSON स्ट्रिंग में बदलें
                 json_string = json.dumps(service_account_info_dict)
-
-                # Firebase SDK के लिए \n कैरेक्टर को वापस न्यूलाइन कैरेक्टर में बदलें
-                # यह एक ज्ञात समस्या का समाधान है जब Streamlit Secrets से डेटा आता है।
+                
+                # FIX 3: \n को ठीक करें और वापस डिक्शनरी में लोड करें
                 json_string_fixed = json_string.replace('\\n', '\n')
-
-                # फिक्स्ड स्ट्रिंग को वापस Python डिक्शनरी में लोड करें
                 final_credentials = json.loads(json_string_fixed)
 
-                # अब credentials.Certificate को फिक्स्ड डिक्शनरी दें
                 cred = credentials.Certificate(final_credentials)
             
             else:
                 # 2. Local मशीन पर चल रहा है: JSON फ़ाइल का उपयोग करें
                 st.info("✅ Firebase: लोकल JSON फ़ाइल का उपयोग कर रहा है।")
-                # ... (लोकल फ़ाइल लोडिंग कोड)
                 
+                with open(SERVICE_ACCOUNT_FILE) as f:
+                    service_account_info = json.load(f)
+                
+                cred = credentials.Certificate(service_account_info)
+            # ----------------------------------
+            
             firebase_admin.initialize_app(cred)
             
         return firestore.client()
         
     except Exception as e:
+        # यह सुनिश्चित करने के लिए कि हम अभी भी त्रुटि देख सकते हैं
         st.error(f"❌ Firebase कनेक्शन विफल। त्रुटि: {e}")
         return None
 
@@ -79,3 +82,4 @@ def delete_employee(employee_id):
     if db:
 
         db.collection(EMPLOYEE_COLLECTION).document(employee_id).delete()
+
