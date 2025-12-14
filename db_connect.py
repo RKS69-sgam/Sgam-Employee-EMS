@@ -1,15 +1,12 @@
-# db_connect.py (Updated for Streamlit Cloud Deployment)
+# db_connect.py (Alternative Fix)
 
 # ... (Imports)
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
-import json # इसे रखें
-
-# लोकल फ़ाइल का नाम (Cloud पर इसका उपयोग नहीं होगा, लेकिन इसे local testing के लिए रखें)
-SERVICE_ACCOUNT_FILE = 'sgamoffice-firebase-adminsdk-fbsvc-253915b05b.json'
-EMPLOYEE_COLLECTION = "employees"
+import json 
+# ... (अन्य फ़ंक्शन)
 
 @st.cache_resource
 def initialize_firebase():
@@ -17,25 +14,31 @@ def initialize_firebase():
     try:
         if not firebase_admin._apps:
             
-            # --- Cloud या Local की जाँच करें ---
             if st.secrets.get("firebase_config"):
-                # 1. Cloud (Secrets) पर चल रहा है: st.secrets से क्रेडेंशियल्स लोड करें
                 st.info("✅ Firebase: Streamlit Secrets का उपयोग कर रहा है।")
                 
-                # st.secrets एक डिक्शनरी को वापस करता है, इसलिए हम इसे सीधे credentials.Certificate को पास कर सकते हैं
-                cred = credentials.Certificate(st.secrets["firebase_config"])
+                # FIX: Secrets को पहले JSON स्ट्रिंग में बदलें, फिर \n को ठीक करें।
+                # यह सुनिश्चित करता है कि private_key में न्यूलाइन कैरेक्टर सही ढंग से डाले गए हैं।
+                service_account_info_dict = st.secrets["firebase_config"]
+
+                # डिक्शनरी को JSON स्ट्रिंग में बदलें
+                json_string = json.dumps(service_account_info_dict)
+
+                # Firebase SDK के लिए \n कैरेक्टर को वापस न्यूलाइन कैरेक्टर में बदलें
+                # यह एक ज्ञात समस्या का समाधान है जब Streamlit Secrets से डेटा आता है।
+                json_string_fixed = json_string.replace('\\n', '\n')
+
+                # फिक्स्ड स्ट्रिंग को वापस Python डिक्शनरी में लोड करें
+                final_credentials = json.loads(json_string_fixed)
+
+                # अब credentials.Certificate को फिक्स्ड डिक्शनरी दें
+                cred = credentials.Certificate(final_credentials)
             
             else:
                 # 2. Local मशीन पर चल रहा है: JSON फ़ाइल का उपयोग करें
                 st.info("✅ Firebase: लोकल JSON फ़ाइल का उपयोग कर रहा है।")
+                # ... (लोकल फ़ाइल लोडिंग कोड)
                 
-                # Local File System से लोड करें
-                with open(SERVICE_ACCOUNT_FILE) as f:
-                    service_account_info = json.load(f)
-                
-                cred = credentials.Certificate(service_account_info)
-            # ----------------------------------
-            
             firebase_admin.initialize_app(cred)
             
         return firestore.client()
@@ -45,7 +48,6 @@ def initialize_firebase():
         return None
 
 db = initialize_firebase()
-# ... (बाकी कोड)
 
 def get_all_employees():
     """Firestore से सभी कर्मचारियों को फ़ेच करता है और Pandas DataFrame लौटाता है।"""
@@ -75,4 +77,5 @@ def update_employee(employee_id, new_data):
 
 def delete_employee(employee_id):
     if db:
+
         db.collection(EMPLOYEE_COLLECTION).document(employee_id).delete()
