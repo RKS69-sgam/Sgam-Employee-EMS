@@ -1,12 +1,15 @@
-# app.py (Updated with Login Security)
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from db_connect import db, get_all_employees, add_employee, update_employee, delete_employee, firestore # db_connect से आयात
+from db_connect import db, get_all_employees, add_employee, update_employee, delete_employee, firestore 
 
 # --- 1. पेज कॉन्फ़िगरेशन ---
 st.set_page_config(layout="wide", page_title="कर्मचारी प्रबंधन प्रणाली (Firestore)")
+
+# --- ग्लोबल कॉन्फ़िगरेशन फिक्स ---
+# 🚨 FIX: HRMS ID के सटीक कॉलम नाम का उपयोग करें (जो Firestore में है)
+EMPLOYEE_ID_KEY = 'HRMS ID' 
+DOC_ID_KEY = 'id'
 
 # --- 2. ऑथेंटिकेशन लॉजिक ---
 
@@ -18,9 +21,9 @@ def login_form():
     if 'app_auth' not in st.secrets:
         st.error("❌ त्रुटि: 'app_auth' Secrets में परिभाषित नहीं है।")
         st.stop()
-    
+        
     USERNAME = st.secrets["app_auth"].get("username", "admin")
-    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@1234") # आपके द्वारा प्रदान किया गया डिफ़ॉल्ट
+    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@1234") 
 
     with st.form("login_form"):
         st.subheader("लॉग इन करें")
@@ -29,21 +32,17 @@ def login_form():
         login_button = st.form_submit_button("प्रवेश करें")
 
         if login_button:
-            # पासवर्ड की जाँच करें
             if username_input == USERNAME and password_input == PASSWORD:
                 st.session_state['authenticated'] = True
                 st.success("✅ सफलतापूर्वक लॉग इन किया गया।")
-                st.rerun() # मुख्य ऐप लोड करने के लिए रीलोड करें
+                st.rerun() 
             else:
                 st.error("❌ गलत यूजरनेम या पासवर्ड।")
 
 # --- 3. ऑथेंटिकेशन की जाँच करें ---
-
-# यदि सत्र अवस्था (session state) में 'authenticated' नहीं है, तो उसे False सेट करें
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 
-# यदि लॉग इन नहीं है, तो लॉगिन फॉर्म दिखाएँ और मुख्य ऐप को रोक दें
 if not st.session_state['authenticated']:
     login_form()
     st.stop()
@@ -59,7 +58,6 @@ if db is None:
 # डेटा कैशिंग फ़ंक्शन
 @st.cache_data(ttl=300)
 def load_employee_data():
-    # यह सुनिश्चित करें कि यह फ़ंक्शन db_connect.py से सही डेटा ला रहा है
     return get_all_employees()
 
 employee_df = load_employee_data()
@@ -69,16 +67,14 @@ if st.sidebar.button("🚪 लॉग आउट"):
     st.session_state['authenticated'] = False
     st.rerun()
 
-# --- मुख्य ऐप UI (पिछले कोड का बाकी हिस्सा यहाँ शुरू होता है) ---
-
-# CSV से लिए गए सभी 36 कॉलम (साफ़ नाम)
+# 🚨 FIX 3: ALL_COLUMNS सूची को आपके द्वारा प्रदान किए गए सटीक नामों से बदल दिया गया
 ALL_COLUMNS = [
-    's_no', 'pf_number', 'hrms_id', 'seniority_no', 'unit', 'employee_name', 'father_s_name', 
-    'designation', 'station', 'pay_level', 'basic_pay', 'dob', 'doa', 'employee_name_in_hindi', 
-    'sf_11_short_name', 'gender', 'category', 'designation_in_hindi', 'posting_status', 
-    'appointment_type', 'prmotion_date', 'dor', 'medical_category', 'last_pme', 'pme_due', 
-    'medical_place', 'last_training', 'training_due', 'service_remark', 'emptype', 
-    'pran', 'pensionaccno', 'rail_quarter_no', 'cug_number', 'e_number', 'unit_no'
+    'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
+    'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
+    'SF-11 short name', 'Gender', 'Category', 'Designation in Hindi', 'Posting status', 
+    'APPOINTMENT TYPE', 'PRMOTION DATE', 'DOR', 'Medical category', 'LAST PME', 'PME DUE', 
+    'MEDICAL PLACE', 'LAST TRAINING', 'TRAINING DUE', 'SERVICE REMARK', 'EMPTYPE', 
+    'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', DOC_ID_KEY
 ]
 
 # --- टैब नेविगेशन ---
@@ -95,14 +91,17 @@ with tab1:
         display_cols = [col for col in ALL_COLUMNS if col in employee_df.columns]
         st.dataframe(employee_df[display_cols], use_container_width=True, hide_index=True)
         st.markdown(f"**कुल कर्मचारी:** {len(employee_df)}")
+        
+        # CSV डाउनलोड बटन (हिंदी को संरक्षित रखने के लिए UTF-8)
+        csv_data = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
+        st.download_button(
+            label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
+            data=csv_data,
+            file_name='employee_full_report.csv',
+            mime='text/csv',
+        )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
-
-# ===================================================================
-# --- 2. नया कर्मचारी जोड़ें (CREATE) ---
-# ... (टैब 2, 3, और 4 का कोड वही रहता है जैसा आपने पिछले चरण में ठीक किया था।)
-
-# ... (बाकी टैब 2, 3, और 4 का कोड यहाँ जारी रखें)
 
 # ===================================================================
 # --- 2. नया कर्मचारी जोड़ें (CREATE) ---
@@ -115,71 +114,81 @@ with tab2:
         
         # Row 1
         with col_c1:
-            name = st.text_input("कर्मचारी का नाम", key="add_name")
-            father_name = st.text_input("पिता का नाम", key="add_fname")
+            name = st.text_input("कर्मचारी का नाम (Employee Name)", key="add_name")
+            father_name = st.text_input("पिता का नाम (FATHER'S NAME)", key="add_fname")
             designation = st.text_input("पद/Designation", key="add_designation")
-            hrms_id = st.text_input("HRMS ID (Unique)", key="add_hrms_id")
+            hrms_id = st.text_input(f"{EMPLOYEE_ID_KEY} (Unique)", key="add_hrms_id")
         
         with col_c2:
-            pf_number = st.text_input("PF नंबर", key="add_pf_number")
+            pf_number = st.text_input("PF नंबर (PF Number)", key="add_pf_number")
             dob = st.date_input("जन्म तिथि (DOB)", key="add_dob", value=None)
             doa = st.date_input("नियुक्ति तिथि (DOA)", key="add_doa", value=None)
             dor = st.date_input("सेवानिवृत्ति (DOR)", key="add_dor", value=None)
             
         with col_c3:
-            station = st.text_input("स्टेशन", key="add_station")
-            unit = st.text_input("यूनिट", key="add_unit")
-            pay_level = st.text_input("पे लेवल", key="add_pay_level")
-            basic_pay = st.number_input("मूल वेतन (Basic Pay)", key="add_basic_pay", value=None, step=100)
+            station = st.text_input("स्टेशन (STATION)", key="add_station")
+            unit = st.text_input("यूनिट (Unit)", key="add_unit")
+            pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level")
+            basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=None, step=100)
             
         st.markdown("---")
         st.subheader("II. अन्य विवरण")
         col_c4, col_c5, col_c6 = st.columns(3)
         
         with col_c4:
-            cug_number = st.text_input("CUG नंबर", key="add_cug")
-            rail_quarter_no = st.text_input("रेल क्वार्टर नं.", key="add_quarter")
-            medical_category = st.text_input("चिकित्सा श्रेणी", key="add_med_cat")
+            cug_number = st.text_input("CUG नंबर (CUG NUMBER)", key="add_cug")
+            rail_quarter_no = st.text_input("रेल क्वार्टर नं. (RAIL QUARTER NO.)", key="add_quarter")
+            medical_category = st.text_input("चिकित्सा श्रेणी (Medical category)", key="add_med_cat")
+            employee_name_in_hindi = st.text_input("नाम हिंदी में (Employee Name in Hindi)", key="add_name_hi")
+            designation_in_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", key="add_des_hi")
 
         with col_c5:
-            last_pme = st.date_input("पिछला PME", key="add_last_pme", value=None)
-            pme_due = st.date_input("अगला PME देय", key="add_pme_due", value=None)
-            last_training = st.date_input("पिछली ट्रेनिंग", key="add_last_training", value=None)
+            last_pme = st.date_input("पिछला PME (LAST PME)", key="add_last_pme", value=None)
+            pme_due = st.date_input("अगला PME देय (PME DUE)", key="add_pme_due", value=None)
+            last_training = st.date_input("पिछली ट्रेनिंग (LAST TRAINING)", key="add_last_training", value=None)
 
         with col_c6:
             pran = st.text_input("PRAN", key="add_pran")
-            pensionaccno = st.text_input("पेंशन खाता संख्या", key="add_pensionaccno")
+            pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", key="add_pensionaccno")
             gender = st.selectbox("लिंग (Gender)", ["Male", "Female", "Other", None], key="add_gender")
 
         submitted = st.form_submit_button("✅ नया कर्मचारी जोड़ें")
         
         if submitted:
             if name and hrms_id:
-                # सभी फ़ील्ड के लिए डेटा डिक्शनरी तैयार करें
+                # 🚨 FIX 4: डुप्लीकेट ID जाँचने के लिए EMPLOYEE_ID_KEY का उपयोग किया गया
+                if hrms_id in employee_df[EMPLOYEE_ID_KEY].values: 
+                    st.error(f"यह {EMPLOYEE_ID_KEY} ({hrms_id}) पहले से मौजूद है।")
+                    st.stop()
+                    
+                # 🚨 FIX 5: नए रिकॉर्ड में सभी फ़ील्ड को उनके सटीक नामों से सहेजा गया
                 new_employee_data = {
-                    "employee_name": name,
-                    "hrms_id": hrms_id,
-                    "father_s_name": father_name,
-                    "designation": designation,
-                    "station": station,
-                    "pf_number": pf_number,
-                    "unit": unit,
-                    "pay_level": pay_level,
-                    "basic_pay": basic_pay,
-                    "dob": str(dob) if dob else None,
-                    "doa": str(doa) if doa else None,
-                    "dor": str(dor) if dor else None,
-                    "cug_number": cug_number,
-                    "rail_quarter_no": rail_quarter_no,
-                    "medical_category": medical_category,
-                    "last_pme": str(last_pme) if last_pme else None,
-                    "pme_due": str(pme_due) if pme_due else None,
-                    "last_training": str(last_training) if last_training else None,
-                    "pran": pran,
-                    "pensionaccno": pensionaccno,
-                    "gender": gender,
+                    "Employee Name": name,
+                    EMPLOYEE_ID_KEY: hrms_id, 
+                    "FATHER'S NAME": father_name,
+                    "Designation": designation,
+                    "STATION": station,
+                    "PF Number": pf_number,
+                    "Unit": unit,
+                    "PAY LEVEL": pay_level,
+                    "BASIC PAY": basic_pay,
+                    "DOB": str(dob) if dob else None,
+                    "DOA": str(doa) if doa else None,
+                    "DOR": str(dor) if dor else None,
+                    "CUG NUMBER": cug_number,
+                    "RAIL QUARTER NO.": rail_quarter_no,
+                    "Medical category": medical_category,
+                    "LAST PME": str(last_pme) if last_pme else None,
+                    "PME DUE": str(pme_due) if pme_due else None,
+                    "LAST TRAINING": str(last_training) if last_training else None,
+                    "PRAN": pran,
+                    "PENSIONACCNO": pensionaccno,
+                    "Gender": gender,
+                    "Employee Name in Hindi": employee_name_in_hindi,
+                    "Designation in Hindi": designation_in_hindi,
                     "created_at": firestore.SERVER_TIMESTAMP
                 }
+                
                 add_employee(new_employee_data)
                 st.success("कर्मचारी सफलतापूर्वक जोड़ा गया।")
                 st.cache_data.clear() 
@@ -197,16 +206,19 @@ with tab3:
         # कर्मचारी को HRMS ID या नाम से चुनें
         selection = st.selectbox(
             "अपडेट करने के लिए कर्मचारी चुनें", 
-            employee_df.apply(lambda row: f"{row.get('employee_name', 'N/A')} ({row.get('hrms_id', 'N/A')})", axis=1).tolist()
+            # 🚨 FIX 6: Selectbox डिस्प्ले में भी सटीक कॉलम नामों का उपयोग किया गया
+            employee_df.apply(lambda row: f"{row.get('Employee Name', 'N/A')} ({row.get(EMPLOYEE_ID_KEY, 'N/A')})", axis=1).tolist()
         )
         
+        # चयनित HRMS ID को एक्सट्रैक्ट करें
         selected_hrms_id = selection.split('(')[-1].strip(')')
-        current_data = employee_df[employee_df['hrms_id'] == selected_hrms_id].iloc[0]
-        selected_firestore_id = current_data['id'] 
+        
+        # 🚨 FIX 7: मुख्य KeyError फिक्स: HRMS ID द्वारा फ़िल्टर करें
+        current_data = employee_df[employee_df[EMPLOYEE_ID_KEY] == selected_hrms_id].iloc[0]
+        selected_firestore_id = current_data[DOC_ID_KEY] 
         
         st.subheader(f"ID: {selected_hrms_id} का विवरण संपादित करें")
 
-        # FIX: Dynamic Key Prefix बनाना जो चयनित कर्मचारी ID पर निर्भर करता है
         key_prefix = f"update_{selected_hrms_id}_" 
         
         # --- UPDATE FORM ---
@@ -215,58 +227,69 @@ with tab3:
             st.subheader("I. मुख्य विवरण")
             col_u1, col_u2, col_u3 = st.columns(3)
             with col_u1:
-                # Dynamic Key का उपयोग करें: key=key_prefix + 'upd_name'
-                new_name = st.text_input("नाम", value=current_data.get('employee_name', ''), key=key_prefix + 'upd_name')
-                new_designation = st.text_input("पद", value=current_data.get('designation', ''), key=key_prefix + 'upd_designation')
-                new_father_name = st.text_input("पिता का नाम", value=current_data.get('father_s_name', ''), key=key_prefix + 'upd_fname')
+                new_name = st.text_input("नाम (Employee Name)", value=current_data.get('Employee Name', ''), key=key_prefix + 'upd_name')
+                new_designation = st.text_input("पद (Designation)", value=current_data.get('Designation', ''), key=key_prefix + 'upd_designation')
+                new_father_name = st.text_input("पिता का नाम (FATHER'S NAME)", value=current_data.get('FATHER\'S NAME', ''), key=key_prefix + 'upd_fname')
+                new_name_hindi = st.text_input("नाम हिंदी में (Employee Name in Hindi)", value=current_data.get('Employee Name in Hindi', ''), key=key_prefix + 'upd_name_hi')
+                
             with col_u2:
-                new_station = st.text_input("स्टेशन", value=current_data.get('station', ''), key=key_prefix + 'upd_station')
-                new_pf_number = st.text_input("PF नंबर", value=current_data.get('pf_number', ''), key=key_prefix + 'upd_pf_number')
-                new_unit = st.text_input("यूनिट", value=current_data.get('unit', ''), key=key_prefix + 'upd_unit')
+                new_station = st.text_input("स्टेशन (STATION)", value=current_data.get('STATION', ''), key=key_prefix + 'upd_station')
+                new_pf_number = st.text_input("PF नंबर (PF Number)", value=current_data.get('PF Number', ''), key=key_prefix + 'upd_pf_number')
+                new_unit = st.text_input("यूनिट (Unit)", value=current_data.get('Unit', ''), key=key_prefix + 'upd_unit')
+                new_designation_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", value=current_data.get('Designation in Hindi', ''), key=key_prefix + 'upd_des_hi')
+                
             with col_u3:
-                new_dob = st.text_input("जन्म तिथि (DOB)", value=current_data.get('dob', ''), key=key_prefix + 'upd_dob')
-                new_doa = st.text_input("नियुक्ति तिथि (DOA)", value=current_data.get('doa', ''), key=key_prefix + 'upd_doa')
-                new_dor = st.text_input("सेवानिवृत्ति (DOR)", value=current_data.get('dor', ''), key=key_prefix + 'upd_dor')
+                new_dob = st.text_input("जन्म तिथि (DOB)", value=current_data.get('DOB', ''), key=key_prefix + 'upd_dob')
+                new_doa = st.text_input("नियुक्ति तिथि (DOA)", value=current_data.get('DOA', ''), key=key_prefix + 'upd_doa')
+                new_dor = st.text_input("सेवानिवृत्ति (DOR)", value=current_data.get('DOR', ''), key=key_prefix + 'upd_dor')
+                new_pay_level = st.text_input("पे लेवल (PAY LEVEL)", value=current_data.get('PAY LEVEL', ''), key=key_prefix + 'upd_pay_level')
+                new_basic_pay = st.text_input("मूल वेतन (BASIC PAY)", value=current_data.get('BASIC PAY', ''), key=key_prefix + 'upd_basic_pay')
 
             st.markdown("---")
             st.subheader("II. संपर्क और अन्य विवरण")
             col_u4, col_u5, col_u6 = st.columns(3)
             with col_u4:
-                new_quarter = st.text_input("रेल क्वार्टर नं.", value=current_data.get('rail_quarter_no', ''), key=key_prefix + 'upd_quarter')
-                new_cug = st.text_input("CUG नंबर", value=current_data.get('cug_number', ''), key=key_prefix + 'upd_cug')
-                new_pran = st.text_input("PRAN", value=current_data.get('pran', ''), key=key_prefix + 'upd_pran')
+                new_quarter = st.text_input("रेल क्वार्टर नं. (RAIL QUARTER NO.)", value=current_data.get('RAIL QUARTER NO.', ''), key=key_prefix + 'upd_quarter')
+                new_cug = st.text_input("CUG नंबर (CUG NUMBER)", value=current_data.get('CUG NUMBER', ''), key=key_prefix + 'upd_cug')
+                new_pran = st.text_input("PRAN", value=current_data.get('PRAN', ''), key=key_prefix + 'upd_pran')
 
             with col_u5:
-                new_med_cat = st.text_input("चिकित्सा श्रेणी", value=current_data.get('medical_category', ''), key=key_prefix + 'upd_med_cat')
-                new_last_pme = st.text_input("पिछला PME", value=current_data.get('last_pme', ''), key=key_prefix + 'upd_last_pme')
-                new_pme_due = st.text_input("अगला PME देय", value=current_data.get('pme_due', ''), key=key_prefix + 'upd_pme_due')
+                new_med_cat = st.text_input("चिकित्सा श्रेणी (Medical category)", value=current_data.get('Medical category', ''), key=key_prefix + 'upd_med_cat')
+                new_last_pme = st.text_input("पिछला PME (LAST PME)", value=current_data.get('LAST PME', ''), key=key_prefix + 'upd_last_pme')
+                new_pme_due = st.text_input("अगला PME देय (PME DUE)", value=current_data.get('PME DUE', ''), key=key_prefix + 'upd_pme_due')
             
             with col_u6:
-                new_pay_level = st.text_input("पे लेवल", value=current_data.get('pay_level', ''), key=key_prefix + 'upd_pay_level')
-                new_basic_pay = st.text_input("मूल वेतन", value=current_data.get('basic_pay', ''), key=key_prefix + 'upd_basic_pay')
+                new_last_training = st.text_input("पिछली ट्रेनिंग (LAST TRAINING)", value=current_data.get('LAST TRAINING', ''), key=key_prefix + 'upd_last_training')
+                new_gender = st.text_input("लिंग (Gender)", value=current_data.get('Gender', ''), key=key_prefix + 'upd_gender')
+                new_pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", value=current_data.get('PENSIONACCNO', ''), key=key_prefix + 'upd_pensionaccno')
                 
             update_button = st.form_submit_button("✏️ विवरण अपडेट करें")
 
             if update_button:
-                # केवल उन फ़ील्ड को अपडेट करें जो फॉर्म में बदले गए हैं
+                # 🚨 FIX 8: अपडेट किए गए डेटा में सभी फ़ील्ड को उनके सटीक नामों से सहेजा गया
                 updated_data = {
-                    "employee_name": new_name,
-                    "designation": new_designation,
-                    "father_s_name": new_father_name,
-                    "station": new_station,
-                    "pf_number": new_pf_number,
-                    "unit": new_unit,
-                    "dob": new_dob,
-                    "doa": new_doa,
-                    "dor": new_dor,
-                    "rail_quarter_no": new_quarter,
-                    "cug_number": new_cug,
-                    "pran": new_pran,
-                    "medical_category": new_med_cat,
-                    "last_pme": new_last_pme,
-                    "pme_due": new_pme_due,
-                    "pay_level": new_pay_level,
-                    "basic_pay": new_basic_pay
+                    "Employee Name": new_name,
+                    "Designation": new_designation,
+                    "FATHER'S NAME": new_father_name,
+                    "STATION": new_station,
+                    "PF Number": new_pf_number,
+                    "Unit": new_unit,
+                    "DOB": new_dob,
+                    "DOA": new_doa,
+                    "DOR": new_dor,
+                    "RAIL QUARTER NO.": new_quarter,
+                    "CUG NUMBER": new_cug,
+                    "PRAN": new_pran,
+                    "Medical category": new_med_cat,
+                    "LAST PME": new_last_pme,
+                    "PME DUE": new_pme_due,
+                    "PAY LEVEL": new_pay_level,
+                    "BASIC PAY": new_basic_pay,
+                    "Employee Name in Hindi": new_name_hindi,
+                    "Designation in Hindi": new_designation_hindi,
+                    "LAST TRAINING": new_last_training,
+                    "Gender": new_gender,
+                    "PENSIONACCNO": new_pensionaccno
                 }
                 update_employee(selected_firestore_id, updated_data)
                 st.success(f"कर्मचारी {new_name} ({selected_hrms_id}) सफलतापूर्वक अपडेट किया गया।")
@@ -276,14 +299,17 @@ with tab3:
         # --- DELETE BUTTON (फॉर्म के बाहर) ---
         st.markdown("---")
         
-        # FIX: Delete बटन की Key को भी Dynamic बनाया गया है
         if st.button("🗑️ इस रिकॉर्ड को हटाएँ", help="यह डेटाबेस से कर्मचारी को स्थायी रूप से हटा देगा।", key=key_prefix + "delete_record_btn"):
-            if st.warning(f"क्या आप वाकई {current_data.get('employee_name')} ({selected_hrms_id}) को हटाना चाहते हैं?"):
-                if st.button("हाँ, पुष्टि करें और हटाएँ", key=key_prefix + "confirm_delete_btn"):
-                    delete_employee(selected_firestore_id)
-                    st.success(f"रिकॉर्ड {selected_hrms_id} सफलतापूर्वक हटाया गया।")
-                    st.cache_data.clear()
-                    st.rerun()
+            if st.session_state.get('confirm_delete', False):
+                delete_employee(selected_firestore_id)
+                st.success(f"रिकॉर्ड {selected_hrms_id} सफलतापूर्वक हटाया गया।")
+                st.session_state.confirm_delete = False
+                st.cache_data.clear() 
+                st.rerun()
+            else:
+                st.session_state.confirm_delete = True
+                st.warning("हटाने की पुष्टि के लिए फिर से 'इस रिकॉर्ड को हटाएँ' दबाएँ।")
+
 
 # ===================================================================
 # --- 4. रिपोर्ट और विश्लेषण ---
@@ -292,23 +318,20 @@ with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
     
     if not employee_df.empty:
-        # पद के आधार पर कर्मचारियों की संख्या
+        # 🚨 FIX 9: 'designation' और 'unit' को सटीक नाम से बदला गया (यदि वे Firestore में 'Designation' और 'Unit' हैं)
         st.subheader("पद के अनुसार वितरण")
-        designation_counts = employee_df['designation'].value_counts().head(10)
+        designation_counts = employee_df['Designation'].value_counts().head(10)
         st.bar_chart(designation_counts)
         
-        # यूनिट के अनुसार वितरण
         st.subheader("यूनिट के अनुसार वितरण")
-        unit_counts = employee_df['unit'].value_counts().head(10)
+        unit_counts = employee_df['Unit'].value_counts().head(10)
         st.bar_chart(unit_counts)
         
-        # डेटा को CSV के रूप में डाउनलोड करें
-        csv = employee_df.to_csv(index=False).encode('utf-8')
+        # डेटा को CSV के रूप में डाउनलोड करें (हिंदी को संरक्षित रखने के लिए UTF-8)
+        csv = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
         st.download_button(
             label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
             data=csv,
             file_name='employee_full_report.csv',
             mime='text/csv',
         )
-
-# --- अंत: मुख्य ऐप UI ---
