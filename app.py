@@ -66,7 +66,7 @@ def get_all_employees():
         st.error(f"डेटा लाने में त्रुटि: {e}")
         return pd.DataFrame()
 
-# 🚨 UPDATED CORE FIX FUNCTION
+# 🚨 CORE FIX FUNCTION
 def clean_data_for_firestore(data):
     """
     Firestore को भेजे जाने से पहले डेटा को साफ़ करता है।
@@ -108,7 +108,7 @@ def add_employee(employee_data):
 
 def update_employee(firestore_doc_id, updated_data):
     """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है।
-    WARNING: इस संस्करण में, खाली स्ट्रिंग (या None) को DELETE_FIELD में बदला जाता है।
+    NOTE: इस संस्करण में, खाली स्ट्रिंग (या None) को DELETE_FIELD में बदला जाता है।
     """
     if db:
         try:
@@ -117,7 +117,7 @@ def update_employee(firestore_doc_id, updated_data):
             
             final_update_data = {}
             for key, value in cleaned_data.items():
-                # 🚨 यदि मान None है, तो उसे DELETE_FIELD में बदल दें (केवल परीक्षण के लिए)
+                # 🚨 यदि मान None है, तो उसे DELETE_FIELD में बदल दें
                 if value is None:
                     final_update_data[key] = firestore.DELETE_FIELD
                 else:
@@ -128,7 +128,7 @@ def update_employee(firestore_doc_id, updated_data):
                  return True
 
             doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
-            doc_ref.update(final_update_data) # फाइनल, साफ़ डेटा भेजा गया
+            doc_ref.update(final_update_data) 
             return True 
         except Exception as e:
             print(f"Firestore Update Failed for {firestore_doc_id}: {e}")
@@ -214,7 +214,7 @@ if st.sidebar.button("🚪 लॉग आउट"):
 ALL_COLUMNS = [
     'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
     'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
-    'SF-11 short name', 'Gender ', 'Category', 'Designation in Hindi', 'Posting status', 
+    'SF-11 short name', 'Gender ', 'Category', 'Designation in Hindi', 'Posting status', # <-- FIX 1
     'APPOINTMENT TYPE', 'PRMOTION DATE', 'DOR', 'Medical category', 'LAST PME', 'PME DUE', 
     'MEDICAL PLACE', 'LAST TRAINING', 'TRAINING DUE', 'SERVICE REMARK', 'EMPTYPE', 
     'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', 
@@ -324,7 +324,7 @@ with tab2:
                     "LAST TRAINING": str(last_training) if last_training else None,
                     "PRAN": pran,
                     "PENSIONACCNO": pensionaccno,
-                    "Gender": gender,
+                    "Gender ": gender, # <-- FIX 2
                     "Employee Name in Hindi": employee_name_in_hindi,
                     "Designation in Hindi": designation_in_hindi,
                     "created_at": firestore.SERVER_TIMESTAMP
@@ -399,7 +399,8 @@ with tab3:
             
             with col_u6:
                 new_last_training = st.text_input("पिछली ट्रेनिंग (LAST TRAINING)", value=current_data.get('LAST TRAINING', ''), key=key_prefix + 'upd_last_training')
-                new_gender = st.text_input("लिंग (Gender )", value=current_data.get('Gender', ''), key=key_prefix + 'upd_gender')
+                # current_data.get('Gender', '') को current_data.get('Gender ', '') में बदलें
+                new_gender = st.text_input("लिंग (Gender )", value=current_data.get('Gender ', ''), key=key_prefix + 'upd_gender') # <-- FIX 3
                 new_pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", value=current_data.get('PENSIONACCNO', ''), key=key_prefix + 'upd_pensionaccno')
                 
             update_button = st.form_submit_button("✏️ विवरण अपडेट करें")
@@ -438,7 +439,7 @@ with tab3:
                         "Employee Name in Hindi": new_name_hindi,
                         "Designation in Hindi": new_designation_hindi,
                         "LAST TRAINING": new_last_training,
-                        "Gender ": new_gender,
+                        "Gender ": new_gender, # <-- FIX 4
                         "PENSIONACCNO": new_pensionaccno
                     }
                     
@@ -480,7 +481,7 @@ with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
     
     # 🚨 डेटाबेस में सही कॉलम नाम परिभाषित करें
-    GENDER_COL = 'Gender ' 
+    GENDER_COL = 'Gender ' # <-- FIX 5 (सुनिश्चित करें कि यह स्पेस के साथ है)
     UNIT_COL = 'Unit'
     DESIGNATION_COL = 'Designation'
     CATEGORY_COL = 'Category'
@@ -587,4 +588,3 @@ with tab4:
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
-
