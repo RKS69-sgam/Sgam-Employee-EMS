@@ -7,7 +7,6 @@ from db_connect import db, get_all_employees, add_employee, update_employee, del
 st.set_page_config(layout="wide", page_title="कर्मचारी प्रबंधन प्रणाली (Firestore)")
 
 # --- ग्लोबल कॉन्फ़िगरेशन फिक्स ---
-# 🚨 FIX: HRMS ID के सटीक कॉलम नाम का उपयोग करें (जो Firestore में है)
 EMPLOYEE_ID_KEY = 'HRMS ID' 
 DOC_ID_KEY = 'id'
 
@@ -67,7 +66,7 @@ if st.sidebar.button("🚪 लॉग आउट"):
     st.session_state['authenticated'] = False
     st.rerun()
 
-# 🚨 FIX 3: ALL_COLUMNS सूची को आपके द्वारा प्रदान किए गए सटीक नामों से बदल दिया गया
+# ALL_COLUMNS सूची में सभी सटीक नाम
 ALL_COLUMNS = [
     'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
     'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
@@ -87,18 +86,18 @@ with tab1:
     st.header("वर्तमान कर्मचारी सूची (सभी फ़ील्ड सहित)")
     
     if not employee_df.empty:
-        # प्रदर्शित करने के लिए अनावश्यक कॉलम हटाएँ
         display_cols = [col for col in ALL_COLUMNS if col in employee_df.columns]
         st.dataframe(employee_df[display_cols], use_container_width=True, hide_index=True)
         st.markdown(f"**कुल कर्मचारी:** {len(employee_df)}")
         
-        # CSV डाउनलोड बटन (हिंदी को संरक्षित रखने के लिए UTF-8)
+        # FIX: download_button में key='download_tab1' जोड़ा गया
         csv_data = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
         st.download_button(
             label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
             data=csv_data,
-            file_name='employee_full_report.csv',
+            file_name='employee_full_report_tab1.csv',
             mime='text/csv',
+            key='download_tab1' # <--- FIX
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
@@ -156,12 +155,10 @@ with tab2:
         
         if submitted:
             if name and hrms_id:
-                # 🚨 FIX 4: डुप्लीकेट ID जाँचने के लिए EMPLOYEE_ID_KEY का उपयोग किया गया
                 if hrms_id in employee_df[EMPLOYEE_ID_KEY].values: 
                     st.error(f"यह {EMPLOYEE_ID_KEY} ({hrms_id}) पहले से मौजूद है।")
                     st.stop()
                     
-                # 🚨 FIX 5: नए रिकॉर्ड में सभी फ़ील्ड को उनके सटीक नामों से सहेजा गया
                 new_employee_data = {
                     "Employee Name": name,
                     EMPLOYEE_ID_KEY: hrms_id, 
@@ -203,17 +200,13 @@ with tab3:
     st.header("कर्मचारी विवरण अपडेट/हटाएँ (सभी फ़ील्ड)")
     
     if not employee_df.empty:
-        # कर्मचारी को HRMS ID या नाम से चुनें
         selection = st.selectbox(
             "अपडेट करने के लिए कर्मचारी चुनें", 
-            # 🚨 FIX 6: Selectbox डिस्प्ले में भी सटीक कॉलम नामों का उपयोग किया गया
             employee_df.apply(lambda row: f"{row.get('Employee Name', 'N/A')} ({row.get(EMPLOYEE_ID_KEY, 'N/A')})", axis=1).tolist()
         )
         
-        # चयनित HRMS ID को एक्सट्रैक्ट करें
         selected_hrms_id = selection.split('(')[-1].strip(')')
         
-        # 🚨 FIX 7: मुख्य KeyError फिक्स: HRMS ID द्वारा फ़िल्टर करें
         current_data = employee_df[employee_df[EMPLOYEE_ID_KEY] == selected_hrms_id].iloc[0]
         selected_firestore_id = current_data[DOC_ID_KEY] 
         
@@ -266,7 +259,6 @@ with tab3:
             update_button = st.form_submit_button("✏️ विवरण अपडेट करें")
 
             if update_button:
-                # 🚨 FIX 8: अपडेट किए गए डेटा में सभी फ़ील्ड को उनके सटीक नामों से सहेजा गया
                 updated_data = {
                     "Employee Name": new_name,
                     "Designation": new_designation,
@@ -318,7 +310,6 @@ with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
     
     if not employee_df.empty:
-        # 🚨 FIX 9: 'designation' और 'unit' को सटीक नाम से बदला गया (यदि वे Firestore में 'Designation' और 'Unit' हैं)
         st.subheader("पद के अनुसार वितरण")
         designation_counts = employee_df['Designation'].value_counts().head(10)
         st.bar_chart(designation_counts)
@@ -327,11 +318,12 @@ with tab4:
         unit_counts = employee_df['Unit'].value_counts().head(10)
         st.bar_chart(unit_counts)
         
-        # डेटा को CSV के रूप में डाउनलोड करें (हिंदी को संरक्षित रखने के लिए UTF-8)
+        # FIX: download_button में key='download_tab4' जोड़ा गया
         csv = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
         st.download_button(
             label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
             data=csv,
-            file_name='employee_full_report.csv',
+            file_name='employee_full_report_tab4.csv',
             mime='text/csv',
+            key='download_tab4' # <--- FIX
         )
