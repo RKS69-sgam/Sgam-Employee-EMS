@@ -474,7 +474,7 @@ with tab3:
 
 
 # ===================================================================
-# --- 4. रिपोर्ट और विश्लेषण (UPDATED) ---
+# --- 4. रिपोर्ट और विश्लेषण (FINAL & STABLE) ---
 # ===================================================================
 with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
@@ -486,40 +486,52 @@ with tab4:
         
         st.markdown("---")
         
-        # 2. पद (Designation) के अनुसार सारांश
-        st.subheader("👨‍💻 पद के अनुसार वितरण (Designation Wise)")
-        designation_counts = employee_df['Designation'].value_counts()
-        st.bar_chart(designation_counts)
-        st.dataframe(designation_counts.rename("Count"), use_container_width=True)
-        
-        st.markdown("---")
-        
         col_r1, col_r2 = st.columns(2)
         
-        # 3. यूनिट (Unit) के अनुसार सारांश
+        # 2. पद (Designation) के अनुसार सारांश
         with col_r1:
-            st.subheader("🏢 यूनिट के अनुसार वितरण (Unit Wise)")
-            unit_counts = employee_df['Unit'].value_counts()
-            st.bar_chart(unit_counts)
-            st.dataframe(unit_counts.rename("Count"), use_container_width=True)
+            st.subheader("👨‍💻 पद के अनुसार वितरण (Designation Wise)")
+            if 'Designation' in employee_df.columns:
+                designation_counts = employee_df['Designation'].value_counts(dropna=True)
+                st.bar_chart(designation_counts)
+                st.dataframe(designation_counts.rename("Count"), use_container_width=True)
+            else:
+                st.info("डेटाबेस में 'Designation' कॉलम नहीं मिला।")
 
-        # 4. लिंग (Gender) के अनुसार सारांश
+        # 3. यूनिट (Unit) के अनुसार सारांश
         with col_r2:
-            st.subheader("🚻 लिंग के अनुसार वितरण (Gender Wise)")
-            gender_counts = employee_df['Gender'].value_counts()
-            st.bar_chart(gender_counts)
-            st.dataframe(gender_counts.rename("Count"), use_container_width=True)
-            
+            st.subheader("🏢 यूनिट के अनुसार वितरण (Unit Wise)")
+            # यह आपके द्वारा बताए गए सभी यूनिटों (30, 31, T/M, W/S, आदि) को कवर करेगा।
+            if 'Unit' in employee_df.columns:
+                unit_counts = employee_df['Unit'].value_counts(dropna=True)
+                st.bar_chart(unit_counts)
+                st.dataframe(unit_counts.rename("Count"), use_container_width=True)
+            else:
+                st.info("डेटाबेस में 'Unit' कॉलम नहीं मिला।")
+
         st.markdown("---")
         
-        # 5. श्रेणी (Category) के अनुसार सारांश (यदि 'Category' फ़ील्ड डेटा में मौजूद है)
-        if 'Category' in employee_df.columns:
+        col_r3, col_r4 = st.columns(2)
+        
+        # 4. लिंग (Gender) के अनुसार सारांश
+        with col_r3:
+            st.subheader("🚻 लिंग के अनुसार वितरण (Gender Wise)")
+            if 'Gender' in employee_df.columns:
+                gender_counts = employee_df['Gender'].value_counts(dropna=True)
+                st.bar_chart(gender_counts)
+                st.dataframe(gender_counts.rename("Count"), use_container_width=True)
+            else:
+                st.info("डेटाबेस में 'Gender' कॉलम नहीं मिला।")
+            
+        # 5. श्रेणी (Category) के अनुसार सारांश
+        with col_r4:
             st.subheader("🏷️ श्रेणी के अनुसार वितरण (Category Wise)")
-            category_counts = employee_df['Category'].value_counts()
-            st.bar_chart(category_counts)
-            st.dataframe(category_counts.rename("Count"), use_container_width=True)
-        else:
-            st.info("डेटाबेस में 'Category' कॉलम नहीं मिला। यह सारांश प्रदर्शित नहीं किया जा सकता।")
+            if 'Category' in employee_df.columns:
+                category_counts = employee_df['Category'].value_counts(dropna=True)
+                st.bar_chart(category_counts)
+                st.dataframe(category_counts.rename("Count"), use_container_width=True)
+            else:
+                st.info("डेटाबेस में 'Category' कॉलम नहीं मिला।")
 
         st.markdown("---")
         
@@ -534,6 +546,7 @@ with tab4:
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
+
 
 
 
