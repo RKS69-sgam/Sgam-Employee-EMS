@@ -107,19 +107,28 @@ def add_employee(employee_data):
             return False 
 
 def update_employee(firestore_doc_id, updated_data):
-    """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है और सफलता बताता है।"""
+    """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है।
+    WARNING: इस संस्करण में, खाली स्ट्रिंग (या None) को DELETE_FIELD में बदला जाता है।
+    """
     if db:
         try:
-            # Clean data before updating
+            # Clean data (empty string को None में बदलेगा)
             cleaned_data = clean_data_for_firestore(updated_data)
             
-            # सुनिश्चित करें कि अपडेट के लिए Cleaned_data खाली नहीं है
-            if not cleaned_data:
+            final_update_data = {}
+            for key, value in cleaned_data.items():
+                # 🚨 यदि मान None है, तो उसे DELETE_FIELD में बदल दें (केवल परीक्षण के लिए)
+                if value is None:
+                    final_update_data[key] = firestore.DELETE_FIELD
+                else:
+                    final_update_data[key] = value
+
+            if not final_update_data:
                  st.warning("कोई अपडेट डेटा नहीं भेजा गया।")
-                 return True 
+                 return True
 
             doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
-            doc_ref.update(cleaned_data) 
+            doc_ref.update(final_update_data) # फाइनल, साफ़ डेटा भेजा गया
             return True 
         except Exception as e:
             print(f"Firestore Update Failed for {firestore_doc_id}: {e}")
@@ -487,3 +496,4 @@ with tab4:
             mime='text/csv',
             key='download_tab4'
         )
+
