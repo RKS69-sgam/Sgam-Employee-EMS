@@ -1,14 +1,16 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+# सुनिश्चित करें कि db_connect.py में db, firestore और सभी CRUD फ़ंक्शन (get_all_employees, add_employee, update_employee, delete_employee) मौजूद हैं।
 from db_connect import db, get_all_employees, add_employee, update_employee, delete_employee, firestore 
 
 # --- 1. पेज कॉन्फ़िगरेशन ---
 st.set_page_config(layout="wide", page_title="कर्मचारी प्रबंधन प्रणाली (Firestore)")
 
-# --- ग्लोबल कॉन्फ़िगरेशन फिक्स ---
+# --- ग्लोबल कॉन्फ़िगरेशन ---
+# Firestore में सटीक कॉलम नामों का उपयोग करें
 EMPLOYEE_ID_KEY = 'HRMS ID' 
-DOC_ID_KEY = 'id'
+DOC_ID_KEY = 'id' # यह Firestore का आंतरिक डॉक्यूमेंट ID है
 
 # --- 2. ऑथेंटिकेशन लॉजिक ---
 
@@ -18,7 +20,7 @@ def login_form():
 
     # Secrets से क्रेडेंशियल्स लोड करें
     if 'app_auth' not in st.secrets:
-        st.error("❌ त्रुटि: 'app_auth' Secrets में परिभाषित नहीं है।")
+        st.error("❌ त्रुटि: 'app_auth' Secrets में परिभाषित नहीं है। कृपया इसे Streamlit Secrets में परिभाषित करें।")
         st.stop()
         
     USERNAME = st.secrets["app_auth"].get("username", "admin")
@@ -57,6 +59,7 @@ if db is None:
 # डेटा कैशिंग फ़ंक्शन
 @st.cache_data(ttl=300)
 def load_employee_data():
+    """Firestore से सारा डेटा लोड करता है।"""
     return get_all_employees()
 
 employee_df = load_employee_data()
@@ -66,14 +69,16 @@ if st.sidebar.button("🚪 लॉग आउट"):
     st.session_state['authenticated'] = False
     st.rerun()
 
-# ALL_COLUMNS सूची में सभी सटीक नाम
+# 🚨 FIX 1: ALL_COLUMNS सूची को आपके द्वारा प्रदान किए गए सटीक नामों से बदला गया
 ALL_COLUMNS = [
     'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
     'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
     'SF-11 short name', 'Gender', 'Category', 'Designation in Hindi', 'Posting status', 
     'APPOINTMENT TYPE', 'PRMOTION DATE', 'DOR', 'Medical category', 'LAST PME', 'PME DUE', 
     'MEDICAL PLACE', 'LAST TRAINING', 'TRAINING DUE', 'SERVICE REMARK', 'EMPTYPE', 
-    'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', DOC_ID_KEY
+    'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', 
+    'SICK FROM Date', 'PF No.', # ये अंतिम दो कॉलम सुनिश्चित करें कि Firestore में हैं
+    DOC_ID_KEY
 ]
 
 # --- टैब नेविगेशन ---
@@ -86,18 +91,20 @@ with tab1:
     st.header("वर्तमान कर्मचारी सूची (सभी फ़ील्ड सहित)")
     
     if not employee_df.empty:
+        # प्रदर्शित करने के लिए अनावश्यक कॉलम हटाएँ
         display_cols = [col for col in ALL_COLUMNS if col in employee_df.columns]
         st.dataframe(employee_df[display_cols], use_container_width=True, hide_index=True)
         st.markdown(f"**कुल कर्मचारी:** {len(employee_df)}")
         
-        # FIX: download_button में key='download_tab1' जोड़ा गया
+        # CSV डाउनलोड बटन (हिंदी को संरक्षित रखने के लिए UTF-8)
+        # 🚨 FIX 2: download_button में key='download_tab1' जोड़ा गया
         csv_data = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
         st.download_button(
             label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
             data=csv_data,
             file_name='employee_full_report_tab1.csv',
             mime='text/csv',
-            key='download_tab1' # <--- FIX
+            key='download_tab1' 
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
@@ -128,7 +135,8 @@ with tab2:
             station = st.text_input("स्टेशन (STATION)", key="add_station")
             unit = st.text_input("यूनिट (Unit)", key="add_unit")
             pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level")
-            basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=None, step=100)
+            # None को सीधे number_input में पास करने से बचने के लिए, 0 या None का उपयोग करें
+            basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100)
             
         st.markdown("---")
         st.subheader("II. अन्य विवरण")
@@ -207,6 +215,7 @@ with tab3:
         
         selected_hrms_id = selection.split('(')[-1].strip(')')
         
+        # HRMS ID द्वारा फ़िल्टर करें और Firestore ID प्राप्त करें
         current_data = employee_df[employee_df[EMPLOYEE_ID_KEY] == selected_hrms_id].iloc[0]
         selected_firestore_id = current_data[DOC_ID_KEY] 
         
@@ -220,9 +229,10 @@ with tab3:
             st.subheader("I. मुख्य विवरण")
             col_u1, col_u2, col_u3 = st.columns(3)
             with col_u1:
+                # Firestore से मौजूदा डेटा को खींचकर डिफ़ॉल्ट वैल्यू के रूप में सेट करें
                 new_name = st.text_input("नाम (Employee Name)", value=current_data.get('Employee Name', ''), key=key_prefix + 'upd_name')
                 new_designation = st.text_input("पद (Designation)", value=current_data.get('Designation', ''), key=key_prefix + 'upd_designation')
-                new_father_name = st.text_input("पिता का नाम (FATHER'S NAME)", value=current_data.get('FATHER\'S NAME', ''), key=key_prefix + 'upd_fname')
+                new_father_name = st.text_input("पिता का नाम (FATHER\'S NAME)", value=current_data.get('FATHER\'S NAME', ''), key=key_prefix + 'upd_fname')
                 new_name_hindi = st.text_input("नाम हिंदी में (Employee Name in Hindi)", value=current_data.get('Employee Name in Hindi', ''), key=key_prefix + 'upd_name_hi')
                 
             with col_u2:
@@ -232,6 +242,7 @@ with tab3:
                 new_designation_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", value=current_data.get('Designation in Hindi', ''), key=key_prefix + 'upd_des_hi')
                 
             with col_u3:
+                # दिनांक फ़ील्ड को स्ट्रिंग के रूप में रखें या date_input का उपयोग करें
                 new_dob = st.text_input("जन्म तिथि (DOB)", value=current_data.get('DOB', ''), key=key_prefix + 'upd_dob')
                 new_doa = st.text_input("नियुक्ति तिथि (DOA)", value=current_data.get('DOA', ''), key=key_prefix + 'upd_doa')
                 new_dor = st.text_input("सेवानिवृत्ति (DOR)", value=current_data.get('DOR', ''), key=key_prefix + 'upd_dor')
@@ -259,48 +270,61 @@ with tab3:
             update_button = st.form_submit_button("✏️ विवरण अपडेट करें")
 
             if update_button:
-                updated_data = {
-                    "Employee Name": new_name,
-                    "Designation": new_designation,
-                    "FATHER'S NAME": new_father_name,
-                    "STATION": new_station,
-                    "PF Number": new_pf_number,
-                    "Unit": new_unit,
-                    "DOB": new_dob,
-                    "DOA": new_doa,
-                    "DOR": new_dor,
-                    "RAIL QUARTER NO.": new_quarter,
-                    "CUG NUMBER": new_cug,
-                    "PRAN": new_pran,
-                    "Medical category": new_med_cat,
-                    "LAST PME": new_last_pme,
-                    "PME DUE": new_pme_due,
-                    "PAY LEVEL": new_pay_level,
-                    "BASIC PAY": new_basic_pay,
-                    "Employee Name in Hindi": new_name_hindi,
-                    "Designation in Hindi": new_designation_hindi,
-                    "LAST TRAINING": new_last_training,
-                    "Gender": new_gender,
-                    "PENSIONACCNO": new_pensionaccno
-                }
-                update_employee(selected_firestore_id, updated_data)
-                st.success(f"कर्मचारी {new_name} ({selected_hrms_id}) सफलतापूर्वक अपडेट किया गया।")
-                st.cache_data.clear()
-                st.rerun()
+                # 🚨 FIX 3: अपडेट बटन क्लिक पर मैसेज दिखाने के लिए लॉजिक
+                if not new_name or not selected_hrms_id:
+                    st.error("नाम और HRMS ID अनिवार्य हैं।")
+                else:
+                    updated_data = {
+                        "Employee Name": new_name,
+                        "Designation": new_designation,
+                        "FATHER'S NAME": new_father_name,
+                        "STATION": new_station,
+                        "PF Number": new_pf_number,
+                        "Unit": new_unit,
+                        "DOB": new_dob,
+                        "DOA": new_doa,
+                        "DOR": new_dor,
+                        "RAIL QUARTER NO.": new_quarter,
+                        "CUG NUMBER": new_cug,
+                        "PRAN": new_pran,
+                        "Medical category": new_med_cat,
+                        "LAST PME": new_last_pme,
+                        "PME DUE": new_pme_due,
+                        "PAY LEVEL": new_pay_level,
+                        "BASIC PAY": new_basic_pay,
+                        "Employee Name in Hindi": new_name_hindi,
+                        "Designation in Hindi": new_designation_hindi,
+                        "LAST TRAINING": new_last_training,
+                        "Gender": new_gender,
+                        "PENSIONACCNO": new_pensionaccno
+                        # HRMS ID को अपडेट न करें क्योंकि यह डॉक्यूमेंट की पहचान है
+                    }
+                    
+                    with st.spinner(f'कर्मचारी {selected_hrms_id} को अपडेट किया जा रहा है...'):
+                        update_employee(selected_firestore_id, updated_data)
+                    
+                    st.success(f"कर्मचारी **{new_name} ({selected_hrms_id})** सफलतापूर्वक अपडेट किया गया।")
+                    st.cache_data.clear()
+                    st.rerun() # अपडेट के बाद डेटा रीलोड करने के लिए
 
         # --- DELETE BUTTON (फॉर्म के बाहर) ---
         st.markdown("---")
         
-        if st.button("🗑️ इस रिकॉर्ड को हटाएँ", help="यह डेटाबेस से कर्मचारी को स्थायी रूप से हटा देगा।", key=key_prefix + "delete_record_btn"):
-            if st.session_state.get('confirm_delete', False):
+        # सेशन स्टेट का उपयोग करके डिलीट की पुष्टि
+        delete_key = key_prefix + "delete_record_btn"
+        
+        if st.button("🗑️ इस रिकॉर्ड को हटाएँ", help="यह डेटाबेस से कर्मचारी को स्थायी रूप से हटा देगा।", key=delete_key):
+            if st.session_state.get(f'confirm_delete_{selected_hrms_id}', False):
                 delete_employee(selected_firestore_id)
                 st.success(f"रिकॉर्ड {selected_hrms_id} सफलतापूर्वक हटाया गया।")
-                st.session_state.confirm_delete = False
+                st.session_state[f'confirm_delete_{selected_hrms_id}'] = False
                 st.cache_data.clear() 
                 st.rerun()
             else:
-                st.session_state.confirm_delete = True
+                st.session_state[f'confirm_delete_{selected_hrms_id}'] = True
                 st.warning("हटाने की पुष्टि के लिए फिर से 'इस रिकॉर्ड को हटाएँ' दबाएँ।")
+    else:
+        st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
 
 
 # ===================================================================
@@ -318,12 +342,13 @@ with tab4:
         unit_counts = employee_df['Unit'].value_counts().head(10)
         st.bar_chart(unit_counts)
         
-        # FIX: download_button में key='download_tab4' जोड़ा गया
+        # CSV डाउनलोड करें
+        # 🚨 FIX 2: download_button में key='download_tab4' जोड़ा गया
         csv = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
         st.download_button(
             label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
             data=csv,
             file_name='employee_full_report_tab4.csv',
             mime='text/csv',
-            key='download_tab4' # <--- FIX
+            key='download_tab4'
         )
