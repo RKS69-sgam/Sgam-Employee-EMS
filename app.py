@@ -474,10 +474,16 @@ with tab3:
 
 
 # ===================================================================
-# --- 4. रिपोर्ट और विश्लेषण (FINAL & STABLE) ---
+# --- 4. रिपोर्ट और विश्लेषण (FINAL & ACCURATE) ---
 # ===================================================================
 with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
+    
+    # 🚨 डेटाबेस में सही कॉलम नाम परिभाषित करें
+    GENDER_COL = 'Gender ' 
+    UNIT_COL = 'Unit'
+    DESIGNATION_COL = 'Designation'
+    CATEGORY_COL = 'Category'
     
     if not employee_df.empty:
         # 1. कुल कर्मचारी
@@ -491,47 +497,53 @@ with tab4:
         # 2. पद (Designation) के अनुसार सारांश
         with col_r1:
             st.subheader("👨‍💻 पद के अनुसार वितरण (Designation Wise)")
-            if 'Designation' in employee_df.columns:
-                designation_counts = employee_df['Designation'].value_counts(dropna=True)
+            if DESIGNATION_COL in employee_df.columns:
+                designation_counts = employee_df[DESIGNATION_COL].value_counts(dropna=True)
                 st.bar_chart(designation_counts)
                 st.dataframe(designation_counts.rename("Count"), use_container_width=True)
             else:
-                st.info("डेटाबेस में 'Designation' कॉलम नहीं मिला।")
+                st.info(f"डेटाबेस में '{DESIGNATION_COL}' कॉलम नहीं मिला।")
 
-        # 3. यूनिट (Unit) के अनुसार सारांश
+        # 3. यूनिट (Unit) के अनुसार सारांश (FIXED LOGIC)
         with col_r2:
-            st.subheader("🏢 यूनिट के अनुसार वितरण (Unit Wise)")
-            # यह आपके द्वारा बताए गए सभी यूनिटों (30, 31, T/M, W/S, आदि) को कवर करेगा।
-            if 'Unit' in employee_df.columns:
-                unit_counts = employee_df['Unit'].value_counts(dropna=True)
-                st.bar_chart(unit_counts)
-                st.dataframe(unit_counts.rename("Count"), use_container_width=True)
+            st.subheader("🏢 यूनिट के अनुसार वितरण (Unit Wise - First 3 Chars)")
+            if UNIT_COL in employee_df.columns:
+                # 🚨 FIX: Unit को पहले 3 अक्षरों/अंकों तक काटें
+                # NaN/None को संभालने के लिए fillna('') का उपयोग करें
+                unit_counts = employee_df[UNIT_COL].fillna('').str.slice(0, 3).value_counts(dropna=True)
+                
+                # यदि सभी गिनती 0 या खाली हो तो सूचित करें
+                if unit_counts.empty and total_employees > 0:
+                     st.warning("यूनिट कॉलम में डेटा खाली है या पहले 3 वर्णों में कोई विविधता नहीं है।")
+                else:
+                    st.bar_chart(unit_counts)
+                    st.dataframe(unit_counts.rename("Count"), use_container_width=True)
             else:
-                st.info("डेटाबेस में 'Unit' कॉलम नहीं मिला।")
+                st.info(f"डेटाबेस में '{UNIT_COL}' कॉलम नहीं मिला।")
 
         st.markdown("---")
         
         col_r3, col_r4 = st.columns(2)
         
-        # 4. लिंग (Gender) के अनुसार सारांश
+        # 4. लिंग (Gender) के अनुसार सारांश (FIXED KEY)
         with col_r3:
             st.subheader("🚻 लिंग के अनुसार वितरण (Gender Wise)")
-            if 'Gender' in employee_df.columns:
-                gender_counts = employee_df['Gender'].value_counts(dropna=True)
+            if GENDER_COL in employee_df.columns:
+                gender_counts = employee_df[GENDER_COL].value_counts(dropna=True)
                 st.bar_chart(gender_counts)
                 st.dataframe(gender_counts.rename("Count"), use_container_width=True)
             else:
-                st.info("डेटाबेस में 'Gender' कॉलम नहीं मिला।")
+                st.info(f"डेटाबेस में '{GENDER_COL}' कॉलम नहीं मिला।")
             
         # 5. श्रेणी (Category) के अनुसार सारांश
         with col_r4:
             st.subheader("🏷️ श्रेणी के अनुसार वितरण (Category Wise)")
-            if 'Category' in employee_df.columns:
-                category_counts = employee_df['Category'].value_counts(dropna=True)
+            if CATEGORY_COL in employee_df.columns:
+                category_counts = employee_df[CATEGORY_COL].value_counts(dropna=True)
                 st.bar_chart(category_counts)
                 st.dataframe(category_counts.rename("Count"), use_container_width=True)
             else:
-                st.info("डेटाबेस में 'Category' कॉलम नहीं मिला।")
+                st.info(f"डेटाबेस में '{CATEGORY_COL}' कॉलम नहीं मिला।")
 
         st.markdown("---")
         
@@ -546,7 +558,3 @@ with tab4:
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
-
-
-
-
