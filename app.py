@@ -474,7 +474,7 @@ with tab3:
 
 
 # ===================================================================
-# --- 4. रिपोर्ट और विश्लेषण (FINAL & ACCURATE) ---
+# --- 4. रिपोर्ट और विश्लेषण (FINAL & ACCURATE - Unit vs Designation) ---
 # ===================================================================
 with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
@@ -492,46 +492,76 @@ with tab4:
         
         st.markdown("---")
         
+        # -----------------------------------------------------------
+        # I. Unit Wise vs Designation Wise (Pivot Table)
+        # -----------------------------------------------------------
+        st.subheader("🏢 यूनिट vs पद का विस्तृत सारांश")
+        st.caption(f"यह दिखाता है कि प्रत्येक यूनिट (पहले 3 वर्णों द्वारा समूहीकृत) में कौन से पद हैं।")
+        
+        if UNIT_COL in employee_df.columns and DESIGNATION_COL in employee_df.columns:
+            # Unit कॉलम को पहले 3 अक्षरों/अंकों तक काटें
+            employee_df['Unit_Summary'] = employee_df[UNIT_COL].fillna('').str.slice(0, 3)
+            
+            # पायवोट टेबल बनाएं: Unit (Row) vs Designation (Column)
+            pivot_table = pd.crosstab(
+                employee_df['Unit_Summary'], 
+                employee_df[DESIGNATION_COL], 
+                margins=True, # 'All' कॉलम और रो जोड़ता है
+                margins_name='Total'
+            )
+            
+            # Index और Columns के नाम सेट करें
+            pivot_table.index.name = 'यूनिट कोड'
+            pivot_table.columns.name = 'पद (Designation)'
+            
+            # 0 (शून्य) प्रविष्टियों को हटाएँ (वैकल्पिक, प्रदर्शन सुधारने के लिए)
+            pivot_table = pivot_table.loc[(pivot_table != 0).any(axis=1)]
+            
+            st.dataframe(pivot_table, use_container_width=True)
+            
+            # वैकल्पिक: शीर्ष 10 पदों के लिए बार चार्ट
+            st.markdown("#### शीर्ष 10 पदों का कुल वितरण")
+            st.bar_chart(employee_df[DESIGNATION_COL].value_counts().head(10))
+            
+            # Pivot table column हटाएँ
+            employee_df.drop(columns=['Unit_Summary'], inplace=True, errors='ignore')
+
+        else:
+            st.warning("यूनिट या पद कॉलम डेटाबेस में नहीं मिले। यह सारांश प्रदर्शित नहीं किया जा सकता।")
+            
+        st.markdown("---")
+        
+        # -----------------------------------------------------------
+        # II. Simple Counts (Side-by-Side)
+        # -----------------------------------------------------------
         col_r1, col_r2 = st.columns(2)
         
-        # 2. पद (Designation) के अनुसार सारांश
+        # 2. पद (Designation) के अनुसार सारांश (Simple Count)
         with col_r1:
-            st.subheader("👨‍💻 पद के अनुसार वितरण (Designation Wise)")
+            st.subheader("👨‍💻 पद के अनुसार वितरण (Simple Count)")
             if DESIGNATION_COL in employee_df.columns:
                 designation_counts = employee_df[DESIGNATION_COL].value_counts(dropna=True)
-                st.bar_chart(designation_counts)
                 st.dataframe(designation_counts.rename("Count"), use_container_width=True)
-            else:
-                st.info(f"डेटाबेस में '{DESIGNATION_COL}' कॉलम नहीं मिला।")
-
-        # 3. यूनिट (Unit) के अनुसार सारांश (FIXED LOGIC)
+            # else: handled in Pivot section
+        
+        # 3. यूनिट (Unit) के अनुसार सारांश (Simple Count - First 3 Chars)
         with col_r2:
-            st.subheader("🏢 यूनिट के अनुसार वितरण (Unit Wise - First 3 Chars)")
+            st.subheader("🏢 यूनिट के अनुसार वितरण (Simple Count)")
             if UNIT_COL in employee_df.columns:
-                # 🚨 FIX: Unit को पहले 3 अक्षरों/अंकों तक काटें
-                # NaN/None को संभालने के लिए fillna('') का उपयोग करें
                 unit_counts = employee_df[UNIT_COL].fillna('').str.slice(0, 3).value_counts(dropna=True)
-                
-                # यदि सभी गिनती 0 या खाली हो तो सूचित करें
-                if unit_counts.empty and total_employees > 0:
-                     st.warning("यूनिट कॉलम में डेटा खाली है या पहले 3 वर्णों में कोई विविधता नहीं है।")
-                else:
-                    st.bar_chart(unit_counts)
-                    st.dataframe(unit_counts.rename("Count"), use_container_width=True)
-            else:
-                st.info(f"डेटाबेस में '{UNIT_COL}' कॉलम नहीं मिला।")
+                st.dataframe(unit_counts.rename("Count"), use_container_width=True)
+            # else: handled in Pivot section
 
         st.markdown("---")
         
         col_r3, col_r4 = st.columns(2)
         
-        # 4. लिंग (Gender) के अनुसार सारांश (FIXED KEY)
+        # 4. लिंग (Gender) के अनुसार सारांश
         with col_r3:
             st.subheader("🚻 लिंग के अनुसार वितरण (Gender Wise)")
             if GENDER_COL in employee_df.columns:
                 gender_counts = employee_df[GENDER_COL].value_counts(dropna=True)
                 st.bar_chart(gender_counts)
-                st.dataframe(gender_counts.rename("Count"), use_container_width=True)
             else:
                 st.info(f"डेटाबेस में '{GENDER_COL}' कॉलम नहीं मिला।")
             
@@ -541,7 +571,6 @@ with tab4:
             if CATEGORY_COL in employee_df.columns:
                 category_counts = employee_df[CATEGORY_COL].value_counts(dropna=True)
                 st.bar_chart(category_counts)
-                st.dataframe(category_counts.rename("Count"), use_container_width=True)
             else:
                 st.info(f"डेटाबेस में '{CATEGORY_COL}' कॉलम नहीं मिला।")
 
