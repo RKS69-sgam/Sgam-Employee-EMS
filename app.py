@@ -214,7 +214,7 @@ if st.sidebar.button("🚪 लॉग आउट"):
 ALL_COLUMNS = [
     'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
     'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
-    'SF-11 short name', 'Gender', 'Category', 'Designation in Hindi', 'Posting status', 
+    'SF-11 short name', 'Gender ', 'Category', 'Designation in Hindi', 'Posting status', 
     'APPOINTMENT TYPE', 'PRMOTION DATE', 'DOR', 'Medical category', 'LAST PME', 'PME DUE', 
     'MEDICAL PLACE', 'LAST TRAINING', 'TRAINING DUE', 'SERVICE REMARK', 'EMPTYPE', 
     'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', 
@@ -293,7 +293,7 @@ with tab2:
         with col_c6:
             pran = st.text_input("PRAN", key="add_pran")
             pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", key="add_pensionaccno")
-            gender = st.selectbox("लिंग (Gender)", ["Male", "Female", "Other", None], key="add_gender")
+            gender = st.selectbox("लिंग (Gender )", ["Male", "Female", "Other", None], key="add_gender")
 
         submitted = st.form_submit_button("✅ नया कर्मचारी जोड़ें")
         
@@ -399,7 +399,7 @@ with tab3:
             
             with col_u6:
                 new_last_training = st.text_input("पिछली ट्रेनिंग (LAST TRAINING)", value=current_data.get('LAST TRAINING', ''), key=key_prefix + 'upd_last_training')
-                new_gender = st.text_input("लिंग (Gender)", value=current_data.get('Gender', ''), key=key_prefix + 'upd_gender')
+                new_gender = st.text_input("लिंग (Gender )", value=current_data.get('Gender', ''), key=key_prefix + 'upd_gender')
                 new_pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", value=current_data.get('PENSIONACCNO', ''), key=key_prefix + 'upd_pensionaccno')
                 
             update_button = st.form_submit_button("✏️ विवरण अपडेट करें")
@@ -438,7 +438,7 @@ with tab3:
                         "Employee Name in Hindi": new_name_hindi,
                         "Designation in Hindi": new_designation_hindi,
                         "LAST TRAINING": new_last_training,
-                        "Gender": new_gender,
+                        "Gender ": new_gender,
                         "PENSIONACCNO": new_pensionaccno
                     }
                     
@@ -587,3 +587,4 @@ with tab4:
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
+
