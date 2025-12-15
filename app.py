@@ -63,10 +63,10 @@ def get_all_employees():
             
         df = pd.DataFrame(data) if data else pd.DataFrame()
         
-        # 🚨 FIX: PF Number एरर को हल करने के लिए PF Number को स्ट्रिंग में बदलें
+        # 🚨 PF NUMBER FIX: PF Number एरर को हल करने के लिए PF Number को हमेशा स्ट्रिंग में बदलें
         if 'PF Number' in df.columns:
-            # यह सुनिश्चित करता है कि '39513AE1314' जैसे मान सही ढंग से संभाले जाएँ
-            df['PF Number'] = df['PF Number'].astype(str)
+            # .astype(str) mixed types (number, string, NaN) को संभालता है
+            df['PF Number'] = df['PF Number'].astype(str).fillna('')
             
         return df
         
@@ -125,7 +125,7 @@ def update_employee(firestore_doc_id, updated_data):
             
             final_update_data = {}
             for key, value in cleaned_data.items():
-                # 🚨 यदि मान None है, तो उसे DELETE_FIELD में बदल दें
+                # 🚨 यदि मान None है, तो उसे DELETE_FIELD में बदल दें (फील्ड हटाने के लिए)
                 if value is None:
                     final_update_data[key] = firestore.DELETE_FIELD
                 else:
@@ -241,7 +241,7 @@ with tab1:
     
     if not employee_df.empty:
         display_cols = [col for col in ALL_COLUMNS if col in employee_df.columns]
-        # FIX: use_container_width=True को width='stretch' से बदला गया
+        # FIX: use_container_width को width='stretch' से बदला गया
         st.dataframe(employee_df[display_cols], width='stretch', hide_index=True)
         st.markdown(f"**कुल कर्मचारी:** {len(employee_df)}")
         
@@ -273,6 +273,7 @@ with tab2:
         
         with col_c2:
             pf_number = st.text_input("PF नंबर (PF Number)", key="add_pf_number")
+            # None-compatible date inputs
             dob = st.date_input("जन्म तिथि (DOB)", key="add_dob", value=None)
             doa = st.date_input("नियुक्ति तिथि (DOA)", key="add_doa", value=None)
             dor = st.date_input("सेवानिवृत्ति (DOR)", key="add_dor", value=None)
@@ -302,7 +303,7 @@ with tab2:
         with col_c6:
             pran = st.text_input("PRAN", key="add_pran")
             pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", key="add_pensionaccno")
-            gender = st.selectbox("लिंग (Gender )", ["Male", "Female", "Other", None], key="add_gender")
+            gender = st.selectbox("लिंग (Gender )", ["Male", "Female", "Other", None], key="add_gender", index=3) # Default None
 
         submitted = st.form_submit_button("✅ नया कर्मचारी जोड़ें")
         
@@ -318,7 +319,7 @@ with tab2:
                     "FATHER'S NAME": father_name,
                     "Designation": designation,
                     "STATION": station,
-                    "PF Number": pf_number,
+                    "PF Number": pf_number, # Will be saved as a string
                     "Unit": unit,
                     "PAY LEVEL": pay_level,
                     "BASIC PAY": basic_pay,
@@ -382,11 +383,13 @@ with tab3:
                 
             with col_u2:
                 new_station = st.text_input("स्टेशन (STATION)", value=current_data.get('STATION', ''), key=key_prefix + 'upd_station')
+                # PF Number field, now guaranteed to be a string
                 new_pf_number = st.text_input("PF नंबर (PF Number)", value=current_data.get('PF Number', ''), key=key_prefix + 'upd_pf_number')
                 new_unit = st.text_input("यूनिट (Unit)", value=current_data.get('Unit', ''), key=key_prefix + 'upd_unit')
                 new_designation_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", value=current_data.get('Designation in Hindi', ''), key=key_prefix + 'upd_des_hi')
                 
             with col_u3:
+                # Text inputs for dates for flexibility during update
                 new_dob = st.text_input("जन्म तिथि (DOB)", value=current_data.get('DOB', ''), key=key_prefix + 'upd_dob')
                 new_doa = st.text_input("नियुक्ति तिथि (DOA)", value=current_data.get('DOA', ''), key=key_prefix + 'upd_doa')
                 new_dor = st.text_input("सेवानिवृत्ति (DOR)", value=current_data.get('DOR', ''), key=key_prefix + 'upd_dor')
@@ -417,10 +420,8 @@ with tab3:
                 if not new_name or not selected_hrms_id:
                     st.error("नाम और HRMS ID अनिवार्य हैं।")
                 else:
-                    # FIX: Empty Element त्रुटि को हल करने के लिए BASIC PAY को संख्या में बदलें
+                    # BASIC PAY को संभालना (या तो संख्या या स्ट्रिंग)
                     try:
-                        # सुनिश्चित करें कि BASIC PAY एक संख्या (या स्ट्रिंग) है
-                        # यदि यह पूरी तरह से डिजिट है, तो int में बदलें, अन्यथा स्ट्रिंग ही रहने दें
                         basic_pay_val = int(new_basic_pay) if new_basic_pay and str(new_basic_pay).isdigit() else new_basic_pay
                     except Exception:
                         st.error("मूल वेतन (BASIC PAY) में अमान्य संख्या दर्ज की गई है। कृपया ठीक करें।")
@@ -431,7 +432,7 @@ with tab3:
                         "Designation": new_designation,
                         "FATHER'S NAME": new_father_name,
                         "STATION": new_station,
-                        "PF Number": new_pf_number,
+                        "PF Number": new_pf_number, # Saved as string
                         "Unit": new_unit,
                         "DOB": new_dob, 
                         "DOA": new_doa,
@@ -509,7 +510,7 @@ with tab4:
         
         if UNIT_COL in employee_df.columns and DESIGNATION_COL in employee_df.columns:
             # Unit कॉलम को पहले 3 अक्षरों/अंकों तक काटें
-            employee_df['Unit_Summary'] = employee_df[UNIT_COL].fillna('').str.slice(0, 3)
+            employee_df['Unit_Summary'] = employee_df[UNIT_COL].fillna('').astype(str).str.slice(0, 3)
             
             # पायवोट टेबल बनाएं: Unit (Row) vs Designation (Column)
             pivot_table = pd.crosstab(
@@ -526,12 +527,12 @@ with tab4:
             # 0 (शून्य) प्रविष्टियों को हटाएँ (वैकल्पिक, प्रदर्शन सुधारने के लिए)
             pivot_table = pivot_table.loc[(pivot_table != 0).any(axis=1)]
             
-            # FIX: use_container_width=True को width='stretch' से बदला गया
+            # FIX: use_container_width को width='stretch' से बदला गया
             st.dataframe(pivot_table, width='stretch')
             
             # वैकल्पिक: शीर्ष 10 पदों के लिए बार चार्ट
             st.markdown("#### शीर्ष 10 पदों का कुल वितरण")
-            st.bar_chart(employee_df[DESIGNATION_COL].value_counts().head(10))
+            st.bar_chart(employee_df[DESIGNATION_COL].value_counts().head(10), width='stretch')
             
             # Pivot table column हटाएँ
             employee_df.drop(columns=['Unit_Summary'], inplace=True, errors='ignore')
@@ -551,7 +552,7 @@ with tab4:
             st.subheader("👨‍💻 पद के अनुसार वितरण (Simple Count)")
             if DESIGNATION_COL in employee_df.columns:
                 designation_counts = employee_df[DESIGNATION_COL].value_counts(dropna=True)
-                # FIX: use_container_width=True को width='stretch' से बदला गया
+                # FIX: use_container_width को width='stretch' से बदला गया
                 st.dataframe(designation_counts.rename("Count"), width='stretch')
             # else: handled in Pivot section
         
@@ -559,8 +560,9 @@ with tab4:
         with col_r2:
             st.subheader("🏢 यूनिट के अनुसार वितरण (Simple Count)")
             if UNIT_COL in employee_df.columns:
-                unit_counts = employee_df[UNIT_COL].fillna('').str.slice(0, 3).value_counts(dropna=True)
-                # FIX: use_container_width=True को width='stretch' से बदला गया
+                # पहले 3 वर्णों पर समूहीकृत
+                unit_counts = employee_df[UNIT_COL].fillna('').astype(str).str.slice(0, 3).value_counts(dropna=True)
+                # FIX: use_container_width को width='stretch' से बदला गया
                 st.dataframe(unit_counts.rename("Count"), width='stretch')
             # else: handled in Pivot section
 
