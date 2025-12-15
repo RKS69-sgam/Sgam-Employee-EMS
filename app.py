@@ -6,48 +6,46 @@ from firebase_admin import credentials, firestore
 import json
 
 # =================================================================
-# --- 0. FIREBASE SETUP & DB FUNCTIONS (Previously db_connect.py) ---
+# --- 0. FIREBASE SETUP & DB FUNCTIONS ---
 # =================================================================
 
 # --- ग्लोबल कॉन्फ़िगरेशन ---
-SERVICE_ACCOUNT_FILE = 'sgamoffice-firebase-adminsdk-fbsvc-253915b05b.json'
-EMPLOYEE_COLLECTION = "employees"
+# लोकल टेस्टिंग के लिए JSON फ़ाइल का नाम (Cloud पर यह अनदेखा किया जाता है)
+SERVICE_ACCOUNT_FILE = 'sgamoffice-firebase-adminsdk-fbsvc-253915b05b.json' 
+EMPLOYEE_COLLECTION = "employees" 
 # Streamlit को firebase.SERVER_TIMESTAMP उपयोग करने देने के लिए firestore को यहाँ उपलब्ध कराएँ
 firestore = firestore
 
 @st.cache_resource
 def initialize_firebase():
-    """Firebase SDK को इनिशियलाइज़ करता है और Firestore क्लाइंट लौटाता है।"""
-    try:
-        if not firebase_admin._apps:
-            
-            if st.secrets.get("firebase_config"):
-                # --- 1. Cloud (Secrets) पर चल रहा है ---
-                # st.info("✅ Firebase: Streamlit Secrets का उपयोग कर रहा है।") # Debugging message removed for cleaner UI
-                
-                service_account_info_attrdict = st.secrets["firebase_config"]
-                final_credentials = dict(service_account_info_attrdict)
-                if isinstance(final_credentials.get('private_key'), str):
-                     final_credentials['private_key'] = final_credentials['private_key'].replace('\\n', '\n')
-                
-                cred = credentials.Certificate(final_credentials)
-            
-            else:
-                # --- 2. Local मशीन पर चल रहा है ---
-                # st.info("✅ Firebase: लोकल JSON फ़ाइल का उपयोग कर रहा है।") # Debugging message removed
-                
-                with open(SERVICE_ACCOUNT_FILE) as f:
-                    service_account_info = json.load(f)
-                cred = credentials.Certificate(service_account_info)
-            # ----------------------------------
-            
-            firebase_admin.initialize_app(cred)
-            
-        return firestore.client()
-        
-    except Exception as e:
-        st.error(f"❌ Firebase कनेक्शन विफल। त्रुटि: {e}")
-        return None
+    """Firebase SDK को इनिशियलाइज़ करता है और Firestore क्लाइंट लौटाता है।"""
+    try:
+        if not firebase_admin._apps:
+            
+            if st.secrets.get("firebase_config"):
+                # --- 1. Cloud (Secrets) पर चल रहा है ---
+                service_account_info_attrdict = st.secrets["firebase_config"]
+                final_credentials = dict(service_account_info_attrdict)
+                if isinstance(final_credentials.get('private_key'), str):
+                     final_credentials['private_key'] = final_credentials['private_key'].replace('\\n', '\n')
+                
+                cred = credentials.Certificate(final_credentials)
+            
+            else:
+                # --- 2. Local मशीन पर चल रहा है ---
+                # Local File System से लोड करें
+                with open(SERVICE_ACCOUNT_FILE) as f:
+                    service_account_info = json.load(f)
+                cred = credentials.Certificate(service_account_info)
+            # ----------------------------------
+            
+            firebase_admin.initialize_app(cred)
+            
+        return firestore.client()
+        
+    except Exception as e:
+        st.error(f"❌ Firebase कनेक्शन विफल। त्रुटि: {e}")
+        return None
 
 db = initialize_firebase()
 
@@ -55,56 +53,57 @@ db = initialize_firebase()
 # --- CRUD फ़ंक्शन्स ---
 
 def get_all_employees():
-    """Firestore से सभी कर्मचारी डेटा प्राप्त करता है और उसे DataFrame के रूप में लौटाता है।"""
-    data = []
-    if db is None: return pd.DataFrame()
+    """Firestore से सभी कर्मचारी डेटा प्राप्त करता है और उसे DataFrame के रूप में लौटाता है।"""
+    data = []
+    if db is None: return pd.DataFrame()
 
-    try:
-        docs = db.collection(EMPLOYEE_COLLECTION).stream()
-        for doc in docs:
-            record = doc.to_dict()
-            record['id'] = doc.id # Firestore Document ID को जोड़ें
-            data.append(record)
-            
-        return pd.DataFrame(data) if data else pd.DataFrame()
-    except Exception as e:
-        st.error(f"डेटा लाने में त्रुटि: {e}")
-        return pd.DataFrame()
+    try:
+        docs = db.collection(EMPLOYEE_COLLECTION).stream()
+        for doc in docs:
+            record = doc.to_dict()
+            record['id'] = doc.id # Firestore Document ID को जोड़ें
+            data.append(record)
+            
+        return pd.DataFrame(data) if data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"डेटा लाने में त्रुटि: {e}")
+        return pd.DataFrame()
 
 def add_employee(employee_data):
-    """Firestore में एक नया कर्मचारी रिकॉर्ड जोड़ता है।"""
-    if db:
-        try:
-            db.collection(EMPLOYEE_COLLECTION).add(employee_data)
-            return True # सफलता के लिए True लौटाएँ
-        except Exception as e:
-            st.error(f"नया रिकॉर्ड जोड़ने में त्रुटि: {e}")
-            return False # विफलता के लिए False लौटाएँ
+    """Firestore में एक नया कर्मचारी रिकॉर्ड जोड़ता है।"""
+    if db:
+        try:
+            db.collection(EMPLOYEE_COLLECTION).add(employee_data)
+            return True # सफलता के लिए True लौटाएँ
+        except Exception as e:
+            st.error(f"नया रिकॉर्ड जोड़ने में त्रुटि: {e}")
+            return False # विफलता के लिए False लौटाएँ
 
 def update_employee(firestore_doc_id, updated_data):
-    """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है और सफलता बताता है।"""
-    if db:
-        try:
-            doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
-            doc_ref.update(updated_data)
-            return True # सफलता
-        except Exception as e:
-            # इस त्रुटि को Debugging के लिए कंसोल या लॉग्स में प्रिंट करें
-            print(f"Firestore Update Failed for {firestore_doc_id}: {e}")
-            st.error(f"रिकॉर्ड अपडेट करने में त्रुटि: {e}")
-            return False # विफलता
-    return False
+    """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है और सफलता बताता है।"""
+    if db:
+        try:
+            doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
+            # 🚨 यह वह महत्वपूर्ण कमांड है जो अपडेट करती है
+            doc_ref.update(updated_data) 
+            return True # सफलता
+        except Exception as e:
+            # 🚨 यह प्रिंट स्टेटमेंट आपको अपडेट विफलता का कारण बताएगा
+            print(f"Firestore Update Failed for {firestore_doc_id}: {e}")
+            st.error(f"रिकॉर्ड अपडेट करने में त्रुटि: {e}")
+            return False # विफलता
+    return False
 
 def delete_employee(firestore_doc_id):
-    """Firestore से कर्मचारी रिकॉर्ड हटाता है।"""
-    if db:
-        try:
-            db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id).delete()
-            return True
-        except Exception as e:
-            st.error(f"रिकॉर्ड हटाने में त्रुटि: {e}")
-            return False
-    return False
+    """Firestore से कर्मचारी रिकॉर्ड हटाता है।"""
+    if db:
+        try:
+            db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id).delete()
+            return True
+        except Exception as e:
+            st.error(f"रिकॉर्ड हटाने में त्रुटि: {e}")
+            return False
+    return False
 
 # =================================================================
 # --- 1. STREAMLIT APP START ---
@@ -217,7 +216,7 @@ with tab2:
         
         with col_c1:
             name = st.text_input("कर्मचारी का नाम (Employee Name)", key="add_name")
-            father_name = st.text_input("पिता का नाम (FATHER'S NAME)", key="add_fname")
+            father_name = st.text_input("पिता का नाम (FATHER\'S NAME)", key="add_fname")
             designation = st.text_input("पद/Designation", key="add_designation")
             hrms_id = st.text_input(f"{EMPLOYEE_ID_KEY} (Unique)", key="add_hrms_id")
         
@@ -230,7 +229,7 @@ with tab2:
         with col_c3:
             station = st.text_input("स्टेशन (STATION)", key="add_station")
             unit = st.text_input("यूनिट (Unit)", key="add_unit")
-            pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level")
+            pay_level = st.text_input("पे लेवल (PAY LEVEL)", value=current_data.get('PAY LEVEL', ''), key="add_pay_level")
             basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100)
             
         st.markdown("---")
@@ -289,7 +288,6 @@ with tab2:
                     "created_at": firestore.SERVER_TIMESTAMP
                 }
                 
-                # add_employee को कॉल करें
                 if add_employee(new_employee_data):
                     st.success("कर्मचारी सफलतापूर्वक जोड़ा गया।")
                     st.cache_data.clear() 
@@ -316,7 +314,7 @@ with tab3:
         current_data = employee_df[employee_df[EMPLOYEE_ID_KEY] == selected_hrms_id].iloc[0]
         selected_firestore_id = current_data[DOC_ID_KEY] 
         
-        st.subheader(f"ID: {selected_hrms_id} का विवरण संपादित करें (Firestore Doc ID: {selected_firestore_id})") # Debugging के लिए Doc ID
+        st.subheader(f"ID: {selected_hrms_id} का विवरण संपादित करें") 
 
         key_prefix = f"update_{selected_hrms_id}_" 
         
@@ -338,7 +336,6 @@ with tab3:
                 new_designation_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", value=current_data.get('Designation in Hindi', ''), key=key_prefix + 'upd_des_hi')
                 
             with col_u3:
-                # DOB, DOA, DOR को text_input से date_input में बदलें यदि आप डेट पिकर चाहते हैं
                 new_dob = st.text_input("जन्म तिथि (DOB)", value=current_data.get('DOB', ''), key=key_prefix + 'upd_dob')
                 new_doa = st.text_input("नियुक्ति तिथि (DOA)", value=current_data.get('DOA', ''), key=key_prefix + 'upd_doa')
                 new_dor = st.text_input("सेवानिवृत्ति (DOR)", value=current_data.get('DOR', ''), key=key_prefix + 'upd_dor')
@@ -394,7 +391,6 @@ with tab3:
                         "PENSIONACCNO": new_pensionaccno
                     }
                     
-                    # 🚨 FIX 4: अपडेट ऑपरेशन को success वेरिएबल में कैप्चर करें
                     with st.spinner(f'कर्मचारी {selected_hrms_id} को अपडेट किया जा रहा है...'):
                         success = update_employee(selected_firestore_id, updated_data)
                     
@@ -403,7 +399,9 @@ with tab3:
                         st.cache_data.clear()
                         st.rerun() 
                     else:
-                        st.error("अपडेट विफल रहा। कृपया लॉग्स (Logs) की जाँच करें कि Firestore क्या त्रुटि दे रहा है।")
+                        # यह तभी दिखेगा जब update_employee False रिटर्न करेगा
+                        st.error("अपडेट विफल रहा। कृपया Streamlit Logs की जाँच करें कि Firestore क्या त्रुटि दे रहा है।")
+        
         # --- DELETE BUTTON (फॉर्म के बाहर) ---
         st.markdown("---")
         
@@ -448,5 +446,3 @@ with tab4:
             mime='text/csv',
             key='download_tab4'
         )
-
-
