@@ -61,12 +61,20 @@ def get_all_employees():
             record['id'] = doc.id # Firestore Document ID को जोड़ें
             data.append(record)
             
-        return pd.DataFrame(data) if data else pd.DataFrame()
+        df = pd.DataFrame(data) if data else pd.DataFrame()
+        
+        # 🚨 FIX: PF Number एरर को हल करने के लिए PF Number को स्ट्रिंग में बदलें
+        if 'PF Number' in df.columns:
+            # यह सुनिश्चित करता है कि '39513AE1314' जैसे मान सही ढंग से संभाले जाएँ
+            df['PF Number'] = df['PF Number'].astype(str)
+            
+        return df
+        
     except Exception as e:
         st.error(f"डेटा लाने में त्रुटि: {e}")
         return pd.DataFrame()
 
-# 🚨 CORE FIX FUNCTION
+# 🚨 UPDATED CORE FIX FUNCTION
 def clean_data_for_firestore(data):
     """
     Firestore को भेजे जाने से पहले डेटा को साफ़ करता है।
@@ -214,7 +222,7 @@ if st.sidebar.button("🚪 लॉग आउट"):
 ALL_COLUMNS = [
     'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
     'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
-    'SF-11 short name', 'Gender ', 'Category', 'Designation in Hindi', 'Posting status', # <-- FIX 1
+    'SF-11 short name', 'Gender ', 'Category', 'Designation in Hindi', 'Posting status', 
     'APPOINTMENT TYPE', 'PRMOTION DATE', 'DOR', 'Medical category', 'LAST PME', 'PME DUE', 
     'MEDICAL PLACE', 'LAST TRAINING', 'TRAINING DUE', 'SERVICE REMARK', 'EMPTYPE', 
     'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', 
@@ -233,7 +241,8 @@ with tab1:
     
     if not employee_df.empty:
         display_cols = [col for col in ALL_COLUMNS if col in employee_df.columns]
-        st.dataframe(employee_df[display_cols], use_container_width=True, hide_index=True)
+        # FIX: use_container_width=True को width='stretch' से बदला गया
+        st.dataframe(employee_df[display_cols], width='stretch', hide_index=True)
         st.markdown(f"**कुल कर्मचारी:** {len(employee_df)}")
         
         csv_data = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
@@ -324,7 +333,7 @@ with tab2:
                     "LAST TRAINING": str(last_training) if last_training else None,
                     "PRAN": pran,
                     "PENSIONACCNO": pensionaccno,
-                    "Gender ": gender, # <-- FIX 2
+                    "Gender ": gender,
                     "Employee Name in Hindi": employee_name_in_hindi,
                     "Designation in Hindi": designation_in_hindi,
                     "created_at": firestore.SERVER_TIMESTAMP
@@ -399,8 +408,7 @@ with tab3:
             
             with col_u6:
                 new_last_training = st.text_input("पिछली ट्रेनिंग (LAST TRAINING)", value=current_data.get('LAST TRAINING', ''), key=key_prefix + 'upd_last_training')
-                # current_data.get('Gender', '') को current_data.get('Gender ', '') में बदलें
-                new_gender = st.text_input("लिंग (Gender )", value=current_data.get('Gender ', ''), key=key_prefix + 'upd_gender') # <-- FIX 3
+                new_gender = st.text_input("लिंग (Gender )", value=current_data.get('Gender ', ''), key=key_prefix + 'upd_gender')
                 new_pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", value=current_data.get('PENSIONACCNO', ''), key=key_prefix + 'upd_pensionaccno')
                 
             update_button = st.form_submit_button("✏️ विवरण अपडेट करें")
@@ -439,7 +447,7 @@ with tab3:
                         "Employee Name in Hindi": new_name_hindi,
                         "Designation in Hindi": new_designation_hindi,
                         "LAST TRAINING": new_last_training,
-                        "Gender ": new_gender, # <-- FIX 4
+                        "Gender ": new_gender,
                         "PENSIONACCNO": new_pensionaccno
                     }
                     
@@ -481,7 +489,7 @@ with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
     
     # 🚨 डेटाबेस में सही कॉलम नाम परिभाषित करें
-    GENDER_COL = 'Gender ' # <-- FIX 5 (सुनिश्चित करें कि यह स्पेस के साथ है)
+    GENDER_COL = 'Gender ' 
     UNIT_COL = 'Unit'
     DESIGNATION_COL = 'Designation'
     CATEGORY_COL = 'Category'
@@ -518,7 +526,8 @@ with tab4:
             # 0 (शून्य) प्रविष्टियों को हटाएँ (वैकल्पिक, प्रदर्शन सुधारने के लिए)
             pivot_table = pivot_table.loc[(pivot_table != 0).any(axis=1)]
             
-            st.dataframe(pivot_table, use_container_width=True)
+            # FIX: use_container_width=True को width='stretch' से बदला गया
+            st.dataframe(pivot_table, width='stretch')
             
             # वैकल्पिक: शीर्ष 10 पदों के लिए बार चार्ट
             st.markdown("#### शीर्ष 10 पदों का कुल वितरण")
@@ -542,7 +551,8 @@ with tab4:
             st.subheader("👨‍💻 पद के अनुसार वितरण (Simple Count)")
             if DESIGNATION_COL in employee_df.columns:
                 designation_counts = employee_df[DESIGNATION_COL].value_counts(dropna=True)
-                st.dataframe(designation_counts.rename("Count"), use_container_width=True)
+                # FIX: use_container_width=True को width='stretch' से बदला गया
+                st.dataframe(designation_counts.rename("Count"), width='stretch')
             # else: handled in Pivot section
         
         # 3. यूनिट (Unit) के अनुसार सारांश (Simple Count - First 3 Chars)
@@ -550,7 +560,8 @@ with tab4:
             st.subheader("🏢 यूनिट के अनुसार वितरण (Simple Count)")
             if UNIT_COL in employee_df.columns:
                 unit_counts = employee_df[UNIT_COL].fillna('').str.slice(0, 3).value_counts(dropna=True)
-                st.dataframe(unit_counts.rename("Count"), use_container_width=True)
+                # FIX: use_container_width=True को width='stretch' से बदला गया
+                st.dataframe(unit_counts.rename("Count"), width='stretch')
             # else: handled in Pivot section
 
         st.markdown("---")
