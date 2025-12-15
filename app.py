@@ -229,8 +229,11 @@ with tab2:
         with col_c3:
             station = st.text_input("स्टेशन (STATION)", key="add_station")
             unit = st.text_input("यूनिट (Unit)", key="add_unit")
-            pay_level = st.text_input("पे लेवल (PAY LEVEL)", value=current_data.get('PAY LEVEL', ''), key="add_pay_level")
-            basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100)
+    
+            # 🚨 FIX यहाँ है: value पैरामीटर को हटा दिया गया
+            pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level") 
+    
+            basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100))
             
         st.markdown("---")
         st.subheader("II. अन्य विवरण")
@@ -446,3 +449,4 @@ with tab4:
             mime='text/csv',
             key='download_tab4'
         )
+
