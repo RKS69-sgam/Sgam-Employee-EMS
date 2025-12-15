@@ -474,26 +474,66 @@ with tab3:
 
 
 # ===================================================================
-# --- 4. रिपोर्ट और विश्लेषण ---
+# --- 4. रिपोर्ट और विश्लेषण (UPDATED) ---
 # ===================================================================
 with tab4:
     st.header("कर्मचारी रिपोर्ट और विश्लेषण")
     
     if not employee_df.empty:
-        st.subheader("पद के अनुसार वितरण")
-        designation_counts = employee_df['Designation'].value_counts().head(10)
+        # 1. कुल कर्मचारी
+        total_employees = len(employee_df)
+        st.metric(label="📊 कुल कर्मचारी (Total Employees)", value=total_employees)
+        
+        st.markdown("---")
+        
+        # 2. पद (Designation) के अनुसार सारांश
+        st.subheader("👨‍💻 पद के अनुसार वितरण (Designation Wise)")
+        designation_counts = employee_df['Designation'].value_counts()
         st.bar_chart(designation_counts)
+        st.dataframe(designation_counts.rename("Count"), use_container_width=True)
         
-        st.subheader("यूनिट के अनुसार वितरण")
-        unit_counts = employee_df['Unit'].value_counts().head(10)
-        st.bar_chart(unit_counts)
+        st.markdown("---")
         
+        col_r1, col_r2 = st.columns(2)
+        
+        # 3. यूनिट (Unit) के अनुसार सारांश
+        with col_r1:
+            st.subheader("🏢 यूनिट के अनुसार वितरण (Unit Wise)")
+            unit_counts = employee_df['Unit'].value_counts()
+            st.bar_chart(unit_counts)
+            st.dataframe(unit_counts.rename("Count"), use_container_width=True)
+
+        # 4. लिंग (Gender) के अनुसार सारांश
+        with col_r2:
+            st.subheader("🚻 लिंग के अनुसार वितरण (Gender Wise)")
+            gender_counts = employee_df['Gender'].value_counts()
+            st.bar_chart(gender_counts)
+            st.dataframe(gender_counts.rename("Count"), use_container_width=True)
+            
+        st.markdown("---")
+        
+        # 5. श्रेणी (Category) के अनुसार सारांश (यदि 'Category' फ़ील्ड डेटा में मौजूद है)
+        if 'Category' in employee_df.columns:
+            st.subheader("🏷️ श्रेणी के अनुसार वितरण (Category Wise)")
+            category_counts = employee_df['Category'].value_counts()
+            st.bar_chart(category_counts)
+            st.dataframe(category_counts.rename("Count"), use_container_width=True)
+        else:
+            st.info("डेटाबेस में 'Category' कॉलम नहीं मिला। यह सारांश प्रदर्शित नहीं किया जा सकता।")
+
+        st.markdown("---")
+        
+        # CSV डाउनलोड बटन
         csv = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
         st.download_button(
             label="डेटा CSV के रूप में डाउनलोड करें (सभी फ़ील्ड)",
             data=csv,
-            file_name='employee_full_report_tab4.csv',
+            file_name='employee_full_report.csv',
             mime='text/csv',
             key='download_tab4'
         )
+    else:
+        st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
+
+
 
