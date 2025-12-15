@@ -4,16 +4,15 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 import json
+import re # रेगुलर एक्सप्रेशन मॉड्यूल जोड़ा गया
 
 # =================================================================
 # --- 0. FIREBASE SETUP & DB FUNCTIONS ---
 # =================================================================
 
 # --- ग्लोबल कॉन्फ़िगरेशन ---
-# लोकल टेस्टिंग के लिए JSON फ़ाइल का नाम (Cloud पर यह अनदेखा किया जाता है)
 SERVICE_ACCOUNT_FILE = 'sgamoffice-firebase-adminsdk-fbsvc-253915b05b.json' 
 EMPLOYEE_COLLECTION = "employees" 
-# Streamlit को firebase.SERVER_TIMESTAMP उपयोग करने देने के लिए firestore को यहाँ उपलब्ध कराएँ
 firestore = firestore
 
 @st.cache_resource
@@ -33,11 +32,9 @@ def initialize_firebase():
             
             else:
                 # --- 2. Local मशीन पर चल रहा है ---
-                # Local File System से लोड करें
                 with open(SERVICE_ACCOUNT_FILE) as f:
                     service_account_info = json.load(f)
                 cred = credentials.Certificate(service_account_info)
-            # ----------------------------------
             
             firebase_admin.initialize_app(cred)
             
@@ -69,28 +66,49 @@ def get_all_employees():
         st.error(f"डेटा लाने में त्रुटि: {e}")
         return pd.DataFrame()
 
+# 🚨 कोर फिक्स फंक्शन: Empty string को None में बदलता है
+def clean_data_for_firestore(data):
+    """Firestore को भेजे जाने से पहले खाली स्ट्रिंग को None में बदलता है।"""
+    cleaned_data = {}
+    for key, value in data.items():
+        if isinstance(value, str) and value.strip() == "":
+            cleaned_data[key] = None
+        else:
+            cleaned_data[key] = value
+    return cleaned_data
+
+
 def add_employee(employee_data):
     """Firestore में एक नया कर्मचारी रिकॉर्ड जोड़ता है।"""
     if db:
         try:
-            db.collection(EMPLOYEE_COLLECTION).add(employee_data)
-            return True # सफलता के लिए True लौटाएँ
+            # Clean data before adding
+            cleaned_data = clean_data_for_firestore(employee_data)
+            db.collection(EMPLOYEE_COLLECTION).add(cleaned_data)
+            return True 
         except Exception as e:
             st.error(f"नया रिकॉर्ड जोड़ने में त्रुटि: {e}")
-            return False # विफलता के लिए False लौटाएँ
+            return False 
 
 def update_employee(firestore_doc_id, updated_data):
     """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है और सफलता बताता है।"""
     if db:
         try:
+            # Clean data before updating
+            cleaned_data = clean_data_for_firestore(updated_data)
+            
+            # सुनिश्चित करें कि अपडेट के लिए Cleaned_data खाली नहीं है
+            if not cleaned_data:
+                 st.warning("कोई अपडेट डेटा नहीं भेजा गया।")
+                 return True # टेक्निकली अपडेट सफल है (या कोई बदलाव नहीं)
+
             doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
-            doc_ref.update(updated_data) 
-            return True # सफलता
+            doc_ref.update(cleaned_data) 
+            return True 
         except Exception as e:
-            # यह प्रिंट स्टेटमेंट Streamlit Cloud Logs में दिखाई देगा
             print(f"Firestore Update Failed for {firestore_doc_id}: {e}")
             st.error(f"रिकॉर्ड अपडेट करने में त्रुटि: {e}")
-            return False # विफलता
+            return False 
     return False
 
 def delete_employee(firestore_doc_id):
@@ -228,7 +246,6 @@ with tab2:
         with col_c3:
             station = st.text_input("स्टेशन (STATION)", key="add_station")
             unit = st.text_input("यूनिट (Unit)", key="add_unit")
-            # FIX: NameError से बचने के लिए value पैरामीटर हटा दिया गया
             pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level") 
             basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100)
             
@@ -366,10 +383,10 @@ with tab3:
                 if not new_name or not selected_hrms_id:
                     st.error("नाम और HRMS ID अनिवार्य हैं।")
                 else:
-                    # FIX: Empty Element त्रुटि को ठीक करने के लिए BASIC PAY को संख्या में बदलें
+                    # FIX: Empty Element त्रुटि को हल करने के लिए BASIC PAY को संख्या में बदलें
                     try:
                         # सुनिश्चित करें कि BASIC PAY एक संख्या (या None) है
-                        basic_pay_val = int(new_basic_pay) if new_basic_pay and str(new_basic_pay).isdigit() else (new_basic_pay if new_basic_pay != '' else None)
+                        basic_pay_val = int(new_basic_pay) if new_basic_pay and str(new_basic_pay).isdigit() else new_basic_pay
                     except Exception:
                         st.error("मूल वेतन (BASIC PAY) में अमान्य संख्या दर्ज की गई है। कृपया ठीक करें।")
                         st.stop()
@@ -381,26 +398,27 @@ with tab3:
                         "STATION": new_station,
                         "PF Number": new_pf_number,
                         "Unit": new_unit,
-                        "DOB": new_dob if new_dob else None, 
-                        "DOA": new_doa if new_doa else None,
-                        "DOR": new_dor if new_dor else None,
+                        "DOB": new_dob, 
+                        "DOA": new_doa,
+                        "DOR": new_dor,
                         "RAIL QUARTER NO.": new_quarter,
                         "CUG NUMBER": new_cug,
                         "PRAN": new_pran,
                         "Medical category": new_med_cat,
-                        "LAST PME": new_last_pme if new_last_pme else None,
-                        "PME DUE": new_pme_due if new_pme_due else None,
+                        "LAST PME": new_last_pme,
+                        "PME DUE": new_pme_due,
                         "PAY LEVEL": new_pay_level,
-                        "BASIC PAY": basic_pay_val, # अब यह संख्या या None है
+                        "BASIC PAY": basic_pay_val, 
                         "Employee Name in Hindi": new_name_hindi,
                         "Designation in Hindi": new_designation_hindi,
-                        "LAST TRAINING": new_last_training if new_last_training else None,
+                        "LAST TRAINING": new_last_training,
                         "Gender": new_gender,
                         "PENSIONACCNO": new_pensionaccno
                     }
                     
                     with st.spinner(f'कर्मचारी {selected_hrms_id} को अपडेट किया जा रहा है...'):
-                        success = update_employee(selected_firestore_id, updated_data)
+                        # update_employee फ़ंक्शन अब डेटा को Firestore को भेजने से पहले साफ़ करेगा
+                        success = update_employee(selected_firestore_id, updated_data) 
                     
                     if success:
                         st.success(f"कर्मचारी **{new_name} ({selected_hrms_id})** सफलतापूर्वक अपडेट किया गया।")
