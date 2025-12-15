@@ -11,7 +11,7 @@ import json
 
 # --- ग्लोबल कॉन्फ़िगरेशन ---
 SERVICE_ACCOUNT_FILE = 'sgamoffice-firebase-adminsdk-fbsvc-253915b05b.json' 
-EMPLOYEE_COLLECTION = "employees" 
+EMPLOYEE_COLLECTION = "employees"
 # Streamlit को firebase.SERVER_TIMESTAMP उपयोग करने देने के लिए firestore को यहाँ उपलब्ध कराएँ
 firestore = firestore
 
@@ -448,3 +448,4 @@ with tab4:
             mime='text/csv',
             key='download_tab4'
         )
+
