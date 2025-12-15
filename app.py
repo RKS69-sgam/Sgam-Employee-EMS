@@ -84,11 +84,10 @@ def update_employee(firestore_doc_id, updated_data):
     if db:
         try:
             doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
-            # 🚨 यह वह महत्वपूर्ण कमांड है जो अपडेट करती है
             doc_ref.update(updated_data) 
             return True # सफलता
         except Exception as e:
-            # 🚨 यह प्रिंट स्टेटमेंट आपको अपडेट विफलता का कारण बताएगा
+            # यह प्रिंट स्टेटमेंट Streamlit Cloud Logs में दिखाई देगा
             print(f"Firestore Update Failed for {firestore_doc_id}: {e}")
             st.error(f"रिकॉर्ड अपडेट करने में त्रुटि: {e}")
             return False # विफलता
@@ -229,10 +228,8 @@ with tab2:
         with col_c3:
             station = st.text_input("स्टेशन (STATION)", key="add_station")
             unit = st.text_input("यूनिट (Unit)", key="add_unit")
-    
-            # 🚨 FIX यहाँ है: value पैरामीटर को हटा दिया गया
+            # FIX: NameError से बचने के लिए value पैरामीटर हटा दिया गया
             pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level") 
-    
             basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100)
             
         st.markdown("---")
@@ -369,6 +366,14 @@ with tab3:
                 if not new_name or not selected_hrms_id:
                     st.error("नाम और HRMS ID अनिवार्य हैं।")
                 else:
+                    # FIX: Empty Element त्रुटि को ठीक करने के लिए BASIC PAY को संख्या में बदलें
+                    try:
+                        # सुनिश्चित करें कि BASIC PAY एक संख्या (या None) है
+                        basic_pay_val = int(new_basic_pay) if new_basic_pay and str(new_basic_pay).isdigit() else (new_basic_pay if new_basic_pay != '' else None)
+                    except Exception:
+                        st.error("मूल वेतन (BASIC PAY) में अमान्य संख्या दर्ज की गई है। कृपया ठीक करें।")
+                        st.stop()
+                        
                     updated_data = {
                         "Employee Name": new_name,
                         "Designation": new_designation,
@@ -376,20 +381,20 @@ with tab3:
                         "STATION": new_station,
                         "PF Number": new_pf_number,
                         "Unit": new_unit,
-                        "DOB": new_dob,
-                        "DOA": new_doa,
-                        "DOR": new_dor,
+                        "DOB": new_dob if new_dob else None, 
+                        "DOA": new_doa if new_doa else None,
+                        "DOR": new_dor if new_dor else None,
                         "RAIL QUARTER NO.": new_quarter,
                         "CUG NUMBER": new_cug,
                         "PRAN": new_pran,
                         "Medical category": new_med_cat,
-                        "LAST PME": new_last_pme,
-                        "PME DUE": new_pme_due,
+                        "LAST PME": new_last_pme if new_last_pme else None,
+                        "PME DUE": new_pme_due if new_pme_due else None,
                         "PAY LEVEL": new_pay_level,
-                        "BASIC PAY": new_basic_pay,
+                        "BASIC PAY": basic_pay_val, # अब यह संख्या या None है
                         "Employee Name in Hindi": new_name_hindi,
                         "Designation in Hindi": new_designation_hindi,
-                        "LAST TRAINING": new_last_training,
+                        "LAST TRAINING": new_last_training if new_last_training else None,
                         "Gender": new_gender,
                         "PENSIONACCNO": new_pensionaccno
                     }
@@ -402,7 +407,6 @@ with tab3:
                         st.cache_data.clear()
                         st.rerun() 
                     else:
-                        # यह तभी दिखेगा जब update_employee False रिटर्न करेगा
                         st.error("अपडेट विफल रहा। कृपया Streamlit Logs की जाँच करें कि Firestore क्या त्रुटि दे रहा है।")
         
         # --- DELETE BUTTON (फॉर्म के बाहर) ---
@@ -449,5 +453,3 @@ with tab4:
             mime='text/csv',
             key='download_tab4'
         )
-
-
