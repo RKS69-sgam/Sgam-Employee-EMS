@@ -63,7 +63,7 @@ def get_all_employees():
             
         df = pd.DataFrame(data) if data else pd.DataFrame()
         
-        # 🚨 PF NUMBER FIX: PF Number एरर को हल करने के लिए PF Number को हमेशा स्ट्रिंग में बदलें
+        # 🚨 CRITICAL FIX: PF Number एरर को हल करने के लिए PF Number को हमेशा स्ट्रिंग में बदलें
         if 'PF Number' in df.columns:
             # .astype(str) mixed types (number, string, NaN) को संभालता है
             df['PF Number'] = df['PF Number'].astype(str).fillna('')
@@ -78,7 +78,7 @@ def get_all_employees():
 def clean_data_for_firestore(data):
     """
     Firestore को भेजे जाने से पहले डेटा को साफ़ करता है।
-    - खाली स्ट्रिंग (`""`) को None में बदलता है।
+    - खाली स्ट्रिंग ("") को None में बदलता है।
     - खाली कुंजी (Key) वाले तत्वों को हटाता है।
     """
     cleaned_data = {}
@@ -116,7 +116,6 @@ def add_employee(employee_data):
 
 def update_employee(firestore_doc_id, updated_data):
     """Firestore में मौजूदा कर्मचारी रिकॉर्ड को अपडेट करता है।
-    NOTE: इस संस्करण में, खाली स्ट्रिंग (या None) को DELETE_FIELD में बदला जाता है।
     """
     if db:
         try:
@@ -125,7 +124,7 @@ def update_employee(firestore_doc_id, updated_data):
             
             final_update_data = {}
             for key, value in cleaned_data.items():
-                # 🚨 यदि मान None है, तो उसे DELETE_FIELD में बदल दें (फील्ड हटाने के लिए)
+                # यदि मान None है, तो उसे DELETE_FIELD में बदल दें (फील्ड हटाने के लिए)
                 if value is None:
                     final_update_data[key] = firestore.DELETE_FIELD
                 else:
@@ -171,6 +170,7 @@ DOC_ID_KEY = 'id'
 def login_form():
     st.title("🔒 लॉगिन आवश्यक")
 
+    # Secrets की जाँच करें (या तो firebase_config या app_auth)
     if 'app_auth' not in st.secrets:
         st.error("❌ त्रुटि: 'app_auth' Secrets में परिभाषित नहीं है।")
         st.stop()
@@ -230,6 +230,22 @@ ALL_COLUMNS = [
     DOC_ID_KEY
 ]
 
+# --- Selectbox Options के लिए अद्वितीय मान प्राप्त करें ---
+df = employee_df.copy() # DataFrame की प्रतिलिपि लें
+
+DESIGNATION_OPTIONS = sorted(df['Designation'].dropna().unique().tolist() if 'Designation' in df.columns else [])
+UNIT_OPTIONS = sorted(df['Unit'].dropna().unique().tolist() if 'Unit' in df.columns else [])
+STATION_OPTIONS = sorted(df['STATION'].dropna().unique().tolist() if 'STATION' in df.columns else [])
+PAY_LEVEL_OPTIONS = sorted(df['PAY LEVEL'].dropna().unique().tolist() if 'PAY LEVEL' in df.columns else [])
+
+NEW_ENTRY_FLAG = "➕ नया दर्ज करें"
+
+def get_options_with_new(options):
+    """Selectbox के लिए options सूची बनाता है, जिसमें 'नया दर्ज करें' विकल्प शामिल है।"""
+    if not options:
+        return [NEW_ENTRY_FLAG]
+    return [None] + [NEW_ENTRY_FLAG] + options
+
 # --- टैब नेविगेशन ---
 tab1, tab2, tab3, tab4 = st.tabs(["📊 वर्तमान स्थिति", "➕ नया कर्मचारी जोड़ें", "✏️ अपडेट/हटाएँ", "📈 रिपोर्ट"])
 
@@ -268,20 +284,48 @@ with tab2:
         with col_c1:
             name = st.text_input("कर्मचारी का नाम (Employee Name)", key="add_name")
             father_name = st.text_input("पिता का नाम (FATHER\'S NAME)", key="add_fname")
-            designation = st.text_input("पद/Designation", key="add_designation")
+            
+            # --- Designation Selectbox ---
+            st.markdown("**पद/Designation**")
+            selected_designation = st.selectbox("Designation Select", get_options_with_new(DESIGNATION_OPTIONS), key="add_designation_select", label_visibility="collapsed")
+            if selected_designation == NEW_ENTRY_FLAG:
+                designation = st.text_input("नया पद दर्ज करें", key="add_designation_text")
+            else:
+                designation = selected_designation
+                
             hrms_id = st.text_input(f"{EMPLOYEE_ID_KEY} (Unique)", key="add_hrms_id")
         
         with col_c2:
             pf_number = st.text_input("PF नंबर (PF Number)", key="add_pf_number")
-            # None-compatible date inputs
             dob = st.date_input("जन्म तिथि (DOB)", key="add_dob", value=None)
             doa = st.date_input("नियुक्ति तिथि (DOA)", key="add_doa", value=None)
             dor = st.date_input("सेवानिवृत्ति (DOR)", key="add_dor", value=None)
             
         with col_c3:
-            station = st.text_input("स्टेशन (STATION)", key="add_station")
-            unit = st.text_input("यूनिट (Unit)", key="add_unit")
-            pay_level = st.text_input("पे लेवल (PAY LEVEL)", key="add_pay_level") 
+            # --- Station Selectbox ---
+            st.markdown("**स्टेशन (STATION)**")
+            selected_station = st.selectbox("STATION Select", get_options_with_new(STATION_OPTIONS), key="add_station_select", label_visibility="collapsed")
+            if selected_station == NEW_ENTRY_FLAG:
+                station = st.text_input("नया स्टेशन दर्ज करें", key="add_station_text")
+            else:
+                station = selected_station
+                
+            # --- Unit Selectbox ---
+            st.markdown("**यूनिट (Unit)**")
+            selected_unit = st.selectbox("Unit Select", get_options_with_new(UNIT_OPTIONS), key="add_unit_select", label_visibility="collapsed")
+            if selected_unit == NEW_ENTRY_FLAG:
+                unit = st.text_input("नई यूनिट दर्ज करें", key="add_unit_text")
+            else:
+                unit = selected_unit
+            
+            # --- Pay Level Selectbox ---
+            st.markdown("**पे लेवल (PAY LEVEL)**")
+            selected_pay_level = st.selectbox("PAY LEVEL Select", get_options_with_new(PAY_LEVEL_OPTIONS), key="add_pay_level_select", label_visibility="collapsed")
+            if selected_pay_level == NEW_ENTRY_FLAG:
+                pay_level = st.text_input("नया पे लेवल दर्ज करें", key="add_pay_level_text")
+            else:
+                pay_level = selected_pay_level
+                
             basic_pay = st.number_input("मूल वेतन (BASIC PAY)", key="add_basic_pay", value=0, step=100)
             
         st.markdown("---")
@@ -289,11 +333,11 @@ with tab2:
         col_c4, col_c5, col_c6 = st.columns(3)
         
         with col_c4:
-            cug_number = st.text_input("CUG नंबर (CUG NUMBER)", key="add_cug")
-            rail_quarter_no = st.text_input("रेल क्वार्टर नं. (RAIL QUARTER NO.)", key="add_quarter")
-            medical_category = st.text_input("चिकित्सा श्रेणी (Medical category)", key="add_med_cat")
-            employee_name_in_hindi = st.text_input("नाम हिंदी में (Employee Name in Hindi)", key="add_name_hi")
-            designation_in_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", key="add_des_hi")
+            cug_number = st.text_input("CUG नंबर (CUG NUMBER)", value="", key="add_cug")
+            rail_quarter_no = st.text_input("रेल क्वार्टर नं. (RAIL QUARTER NO.)", value="", key="add_quarter")
+            medical_category = st.text_input("चिकित्सा श्रेणी (Medical category)", value="", key="add_med_cat")
+            employee_name_in_hindi = st.text_input("नाम हिंदी में (Employee Name in Hindi)", value="", key="add_name_hi")
+            designation_in_hindi = st.text_input("पद हिंदी में (Designation in Hindi)", value="", key="add_des_hi")
 
         with col_c5:
             last_pme = st.date_input("पिछला PME (LAST PME)", key="add_last_pme", value=None)
@@ -301,53 +345,57 @@ with tab2:
             last_training = st.date_input("पिछली ट्रेनिंग (LAST TRAINING)", key="add_last_training", value=None)
 
         with col_c6:
-            pran = st.text_input("PRAN", key="add_pran")
-            pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", key="add_pensionaccno")
-            gender = st.selectbox("लिंग (Gender )", ["Male", "Female", "Other", None], key="add_gender", index=3) # Default None
+            pran = st.text_input("PRAN", value="", key="add_pran")
+            pensionaccno = st.text_input("पेंशन खाता संख्या (PENSIONACCNO)", value="", key="add_pensionaccno")
+            gender = st.selectbox("लिंग (Gender )", ["Male", "Female", "Other", None], key="add_gender", index=3)
 
         submitted = st.form_submit_button("✅ नया कर्मचारी जोड़ें")
         
         if submitted:
-            if name and hrms_id:
-                if hrms_id in employee_df[EMPLOYEE_ID_KEY].values: 
-                    st.error(f"यह {EMPLOYEE_ID_KEY} ({hrms_id}) पहले से मौजूद है।")
-                    st.stop()
-                    
-                new_employee_data = {
-                    "Employee Name": name,
-                    EMPLOYEE_ID_KEY: hrms_id, 
-                    "FATHER'S NAME": father_name,
-                    "Designation": designation,
-                    "STATION": station,
-                    "PF Number": pf_number, # Will be saved as a string
-                    "Unit": unit,
-                    "PAY LEVEL": pay_level,
-                    "BASIC PAY": basic_pay,
-                    "DOB": str(dob) if dob else None,
-                    "DOA": str(doa) if doa else None,
-                    "DOR": str(dor) if dor else None,
-                    "CUG NUMBER": cug_number,
-                    "RAIL QUARTER NO.": rail_quarter_no,
-                    "Medical category": medical_category,
-                    "LAST PME": str(last_pme) if last_pme else None,
-                    "PME DUE": str(pme_due) if pme_due else None,
-                    "LAST TRAINING": str(last_training) if last_training else None,
-                    "PRAN": pran,
-                    "PENSIONACCNO": pensionaccno,
-                    "Gender ": gender,
-                    "Employee Name in Hindi": employee_name_in_hindi,
-                    "Designation in Hindi": designation_in_hindi,
-                    "created_at": firestore.SERVER_TIMESTAMP
-                }
+            # 1. आवश्यक फ़ील्ड की जाँच करें
+            if not name or not hrms_id or not designation or not station or not unit or not pay_level:
+                st.error("नाम, HRMS ID, पद, स्टेशन, यूनिट और पे लेवल अनिवार्य हैं।")
+                st.stop()
+            
+            # 2. डुप्लीकेट HRMS ID की जाँच करें
+            if hrms_id in employee_df[EMPLOYEE_ID_KEY].values: 
+                st.error(f"यह {EMPLOYEE_ID_KEY} ({hrms_id}) पहले से मौजूद है।")
+                st.stop()
                 
-                if add_employee(new_employee_data):
-                    st.success("कर्मचारी सफलतापूर्वक जोड़ा गया।")
-                    st.cache_data.clear() 
-                    st.rerun() 
-                else:
-                    st.error("कर्मचारी जोड़ने में विफलता। कृपया लॉग्स की जाँच करें।")
+            # 3. डेटा संग्रहण (Data Collection)
+            new_employee_data = {
+                "Employee Name": name,
+                EMPLOYEE_ID_KEY: hrms_id, 
+                "FATHER'S NAME": father_name,
+                "Designation": designation,
+                "STATION": station,
+                "PF Number": pf_number, 
+                "Unit": unit,
+                "PAY LEVEL": pay_level,
+                "BASIC PAY": basic_pay,
+                "DOB": str(dob) if dob else None,
+                "DOA": str(doa) if doa else None,
+                "DOR": str(dor) if dor else None,
+                "CUG NUMBER": cug_number,
+                "RAIL QUARTER NO.": rail_quarter_no,
+                "Medical category": medical_category,
+                "LAST PME": str(last_pme) if last_pme else None,
+                "PME DUE": str(pme_due) if pme_due else None,
+                "LAST TRAINING": str(last_training) if last_training else None,
+                "PRAN": pran,
+                "PENSIONACCNO": pensionaccno,
+                "Gender ": gender,
+                "Employee Name in Hindi": employee_name_in_hindi,
+                "Designation in Hindi": designation_in_hindi,
+                "created_at": firestore.SERVER_TIMESTAMP
+            }
+            
+            if add_employee(new_employee_data):
+                st.success("कर्मचारी सफलतापूर्वक जोड़ा गया।")
+                st.cache_data.clear() 
+                st.rerun() 
             else:
-                st.error("नाम और HRMS ID अनिवार्य हैं।")
+                st.error("कर्मचारी जोड़ने में विफलता। कृपया लॉग्स की जाँच करें।")
 
 # ===================================================================
 # --- 3. अपडेट/हटाएँ (UPDATE/DELETE) ---
@@ -554,7 +602,6 @@ with tab4:
                 designation_counts = employee_df[DESIGNATION_COL].value_counts(dropna=True)
                 # FIX: use_container_width को width='stretch' से बदला गया
                 st.dataframe(designation_counts.rename("Count"), width='stretch')
-            # else: handled in Pivot section
         
         # 3. यूनिट (Unit) के अनुसार सारांश (Simple Count - First 3 Chars)
         with col_r2:
@@ -564,7 +611,6 @@ with tab4:
                 unit_counts = employee_df[UNIT_COL].fillna('').astype(str).str.slice(0, 3).value_counts(dropna=True)
                 # FIX: use_container_width को width='stretch' से बदला गया
                 st.dataframe(unit_counts.rename("Count"), width='stretch')
-            # else: handled in Pivot section
 
         st.markdown("---")
         
