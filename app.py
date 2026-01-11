@@ -35,14 +35,14 @@ db = initialize_firebase()
 # =================================================================
 # --- 1. AUTHENTICATION (admin / Sgam@4321) ---
 # =================================================================
-st.set_page_config(layout="wide", page_title="Railway Employee System")
+st.set_page_config(layout="wide", page_title="Railway Management System")
 
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 
 if not st.session_state['authenticated']:
     st.title("🔒 लॉगिन (Login)")
-    with st.form("login"):
+    with st.form("login_form"):
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.form_submit_button("Enter"):
@@ -70,23 +70,21 @@ def get_all_employees():
         st.error(f"Error fetching data: {e}"); return pd.DataFrame()
 
 def clean_payload(raw_data):
-    """Khaali keys aur formats ko saaf karta hai taki Firestore error na de"""
+    """Khaali keys ko filter karta hai taki Firestore error na aaye"""
     clean_data = {}
     for key, val in raw_data.items():
-        # Check if key is valid (not empty string)
         if key and str(key).strip() and not str(key).startswith('Unnamed'):
             v_str = str(val).strip() if val is not None else ""
-            # Agar value khaali hai toh None (null) bhejein
             clean_data[str(key).strip()] = v_str if v_str != "" else None
     return clean_data
 
-# Global Variables
+# Global Data
 employee_df = get_all_employees()
 DOC_ID_KEY = 'id'
 HRMS_ID_KEY = 'HRMS ID'
 NEW_FLAG = "➕ नया दर्ज करें"
 
-# Exact Headers from your CSV
+# Aapki Excel file ke exact headers
 ALL_COLS = [
     'S. No.', 'Employee Name', 'Employee Name in Hindi', 'HRMS ID', 'PF Number', 
     'FATHER\'S NAME', 'Designation', 'Designation in Hindi', 'Unit', 'STATION', 
@@ -102,60 +100,54 @@ ALL_COLS = [
 # =================================================================
 tab1, tab2, tab3 = st.tabs(["📊 डैशबोर्ड", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ"])
 
-# --- TAB 1: VIEW & DOWNLOAD ---
+# --- TAB 1: DASHBOARD ---
 with tab1:
     st.header("📋 मास्टर डेटाबेस")
     if not employee_df.empty:
-        # CSV Download Logic
+        # Excel Download Button
         csv_file = employee_df.drop(columns=[DOC_ID_KEY], errors='ignore').to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("📥 डाउनलोड Excel (CSV)", csv_file, "Employee_Export.csv", "text/csv")
+        st.download_button("📥 पूरी डेटाबेस CSV डाउनलोड करें", csv_file, "Employee_Export.csv", "text/csv")
         
         st.divider()
         st.dataframe(employee_df.drop(columns=[DOC_ID_KEY], errors='ignore'), use_container_width=True)
     else:
-        st.info("डेटाबेस में कोई रिकॉर्ड नहीं है।")
+        st.info("डेटाबेस खाली है।")
 
-# --- TAB 2: ADD NEW (EDITABLE UNIT) ---
+# --- TAB 2: ADD NEW ---
 with tab2:
-    st.header("➕ नए कर्मचारी का विवरण भरें")
+    st.header("➕ नई एंट्री")
     with st.form("add_new"):
         c1, c2, c3 = st.columns(3)
+        n_name = c1.text_input("Employee Name*")
+        n_id = c1.text_input("HRMS ID*")
         
-        name = c1.text_input("Employee Name*")
-        hrms = c1.text_input("HRMS ID*")
-        
-        # Unit Dropdown + Add New
+        # Editable Unit Dropdown
         u_list = sorted(employee_df['Unit'].dropna().unique().tolist()) if not employee_df.empty else []
         u_sel = c2.selectbox("Unit", [None, NEW_FLAG] + u_list)
-        unit = st.text_input("नई यूनिट का नाम") if u_sel == NEW_FLAG else u_sel
+        n_unit = st.text_input("नयी यूनिट का नाम") if u_sel == NEW_FLAG else u_sel
         
-        desig = c2.text_input("Designation")
-        stat = c3.text_input("STATION")
-        pf = c3.text_input("PF Number")
-        
-        st.write("---")
-        dob = st.date_input("Date of Birth (DOB)", value=None)
-        pme = st.date_input("PME Due Date", value=None)
+        n_desig = c2.text_input("Designation")
+        n_pf = c3.text_input("PF Number")
+        n_pme = st.date_input("PME Due Date", value=None)
 
         if st.form_submit_button("✅ सुरक्षित करें"):
-            if name and hrms:
-                new_rec = clean_payload({
-                    "Employee Name": name, "HRMS ID": hrms, "Unit": unit,
-                    "Designation": desig, "STATION": stat, "PF Number": pf,
-                    "DOB": str(dob), "PME DUE": str(pme)
+            if n_name and n_id:
+                final_add = clean_payload({
+                    "Employee Name": n_name, "HRMS ID": n_id, "Unit": n_unit,
+                    "Designation": n_desig, "PF Number": n_pf, "PME DUE": str(n_pme)
                 })
-                db.collection(EMPLOYEE_COLLECTION).add(new_rec)
-                st.success("Record Saved!"); st.cache_data.clear(); st.rerun()
+                db.collection(EMPLOYEE_COLLECTION).add(final_add)
+                st.success("सफलतापूर्वक जोड़ा गया!"); st.cache_data.clear(); st.rerun()
             else:
-                st.error("Name aur HRMS ID अनिवार्य हैं।")
+                st.error("Name और HRMS ID जरूरी हैं।")
 
-# --- TAB 3: UPDATE (GRID OF ALL 38 COLUMNS) ---
+# --- TAB 3: UPDATE (FIXED ERROR) ---
 with tab3:
-    st.header("✏️ रिकॉर्ड अपडेट या डिलीट करें")
+    st.header("✏️ रिकॉर्ड अपडेट")
     if not employee_df.empty:
-        # Search & Select
+        # Search Box
         options = employee_df.apply(lambda r: f"{r.get('Employee Name')} ({r.get(HRMS_ID_KEY)})", axis=1).tolist()
-        emp_sel = st.selectbox("कर्मचारी खोजें", options)
+        emp_sel = st.selectbox("कर्मचारी चुनें", options)
         e_id = emp_sel.split('(')[-1].strip(')')
         record = employee_df[employee_df[HRMS_ID_KEY] == e_id].iloc[0]
 
@@ -164,18 +156,22 @@ with tab3:
             updated_vals = {}
             u_grid = st.columns(3)
             
-            # Aapki file ke saare headers yahan loop mein dikhenge
+            # Show all 37+ columns from your database headers
             for i, col in enumerate(ALL_COLS):
                 with u_grid[i % 3]:
-                    old_val = record.get(col, "")
-                    updated_vals[col] = st.text_input(col, value=str(old_val) if old_val is not None else "")
+                    current_val = record.get(col, "")
+                    updated_vals[col] = st.text_input(col, value=str(current_val) if current_val is not None else "")
 
-            if st.form_submit_button("💾 सभी बदलाव अपडेट करें"):
+            if st.form_submit_button("💾 अपडेट सुरक्षित करें"):
+                # SAFE UPDATE: key checking included
                 final_up = clean_payload(updated_vals)
                 if final_up:
-                    db.collection(EMPLOYEE_COLLECTION).document(record[DOC_ID_KEY]).update(final_payload)
+                    # FIXED: Yahan variable name 'final_up' kar diya hai jo pehle 'final_payload' tha
+                    db.collection(EMPLOYEE_COLLECTION).document(record[DOC_ID_KEY]).update(final_up)
                     st.success("डेटा अपडेट हो गया!"); st.cache_data.clear(); st.rerun()
+                else:
+                    st.error("अपडेट करने के लिए कोई डेटा नहीं मिला।")
         
-        if st.button("🗑️ कर्मचारी का नाम डेटाबेस से हटाएं"):
+        if st.button("🗑️ रिकॉर्ड डिलीट करें"):
             db.collection(EMPLOYEE_COLLECTION).document(record[DOC_ID_KEY]).delete()
             st.success("Deleted!"); st.cache_data.clear(); st.rerun()
