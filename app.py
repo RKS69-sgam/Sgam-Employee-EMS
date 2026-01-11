@@ -33,21 +33,7 @@ def initialize_firebase():
 db = initialize_firebase()
 
 # =================================================================
-# --- 1. SAFE DATA CLEANER ---
-# =================================================================
-def clean_payload_final(raw_data):
-    """Khaali aur 'Unnamed' columns ko database se bahar rakhta hai"""
-    clean_data = {}
-    for key, val in raw_data.items():
-        key_str = str(key).strip()
-        # Sirf unhi keys ko rakhein jo valid hain aur Excel ka kachra nahi hain
-        if key_str and not key_str.startswith('Unnamed'):
-            v_str = str(val).strip() if val is not None else ""
-            clean_data[key_str] = v_str if v_str != "" else None
-    return clean_data
-
-# =================================================================
-# --- 2. AUTHENTICATION (admin / Sgam@4321) ---
+# --- 1. CONFIG & AUTHENTICATION ---
 # =================================================================
 st.set_page_config(layout="wide", page_title="Railway Management")
 
@@ -59,16 +45,16 @@ if not st.session_state['authenticated']:
     with st.form("login"):
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
-        if st.form_submit_button("Enter"):
+        if st.form_submit_button("प्रवेश करें"):
             if u == "admin" and p == "Sgam@4321":
                 st.session_state['authenticated'] = True
                 st.rerun()
             else:
-                st.error("❌ Invalid Login")
+                st.error("❌ गलत विवरण")
     st.stop()
 
 # =================================================================
-# --- 3. MAIN APPLICATION ---
+# --- 2. DATA UTILITIES ---
 # =================================================================
 def get_data():
     docs = db.collection(EMPLOYEE_COLLECTION).stream()
@@ -80,8 +66,9 @@ def get_data():
     return pd.DataFrame(data)
 
 employee_df = get_data()
+NEW_FLAG = "➕ नया दर्ज करें"
 
-# Headers based on your uploaded Excel
+# Master Column List
 ALL_COLS = [
     'S. No.', 'Employee Name', 'Employee Name in Hindi', 'HRMS ID', 'PF Number', 
     'FATHER\'S NAME', 'Designation', 'Designation in Hindi', 'Unit', 'STATION', 
@@ -92,51 +79,96 @@ ALL_COLS = [
     'UNIT No.', 'SICK FROM Date', 'SERVICE REMARK', 'MEDICAL PLACE', 'SF-11 short name'
 ]
 
+def clean_payload(raw_dict):
+    clean = {}
+    for k, v in raw_dict.items():
+        ks = str(k).strip()
+        if ks and not ks.startswith('Unnamed'):
+            val = str(v).strip() if v is not None else ""
+            clean[ks] = val if val != "" else None
+    return clean
+
+# Helper to get unique values for dropdowns
+def get_opts(col):
+    if not employee_df.empty and col in employee_df.columns:
+        return sorted([str(x) for x in employee_df[col].unique() if str(x).strip() != 'nan' and str(x).strip() != ""])
+    return []
+
+# =================================================================
+# --- 3. UI TABS ---
+# =================================================================
 tab1, tab2, tab3 = st.tabs(["📊 डैशबोर्ड", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ"])
 
 with tab1:
-    st.header("📋 मास्टर लिस्ट")
+    st.header("📋 मास्टर डेटाबेस")
     if not employee_df.empty:
         csv = employee_df.drop(columns=['id'], errors='ignore').to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("📥 डेटाबेस CSV डाउनलोड करें", csv, "Railway_Backup.csv", "text/csv")
+        st.download_button("📥 डेटाबेस बैकअप डाउनलोड करें", csv, "Railway_DB.csv", "text/csv")
         st.dataframe(employee_df.drop(columns=['id'], errors='ignore'), use_container_width=True)
 
+# --- TAB 2: ADD NEW (WITH ALL 38 COLUMNS & DROPDOWNS) ---
+with tab2:
+    st.header("➕ नए कर्मचारी की प्रविष्टि")
+    st.info("नीचे सभी 38 कॉलम दिए गए हैं। स्टेशन, यूनिट और पद (Designation) के लिए आप लिस्ट से चुन सकते हैं या नया लिख सकते हैं।")
+    
+    with st.form("new_employee_form"):
+        new_data = {}
+        cols = st.columns(3)
+        
+        # Define fields that should be dropdowns
+        dropdown_fields = {
+            'STATION': get_opts('STATION'),
+            'Unit': get_opts('Unit'),
+            'Designation': get_opts('Designation'),
+            'Gender ': ['पुरूष', 'महिला', 'अन्य'],
+            'Category': get_opts('Category'),
+            'Medical category': get_opts('Medical category')
+        }
+
+        for i, c_name in enumerate(ALL_COLS):
+            with cols[i % 3]:
+                if c_name in dropdown_fields:
+                    # Dropdown logic
+                    sel = st.selectbox(f"{c_name} (चुनें)", [None, NEW_FLAG] + dropdown_fields[c_name], key=f"add_{c_name}")
+                    if sel == NEW_FLAG:
+                        new_data[c_name] = st.text_input(f"नया {c_name} लिखें", key=f"new_txt_{c_name}")
+                    else:
+                        new_data[c_name] = sel
+                else:
+                    # Normal text input logic
+                    new_data[c_name] = st.text_input(c_name, key=f"add_txt_{c_name}")
+
+        if st.form_submit_button("✅ डेटाबेस में सुरक्षित करें"):
+            if new_data.get('Employee Name') and new_data.get('HRMS ID'):
+                final_payload = clean_payload(new_data)
+                db.collection(EMPLOYEE_COLLECTION).add(final_payload)
+                st.success("बधाई हो! नया कर्मचारी सफलतापूर्वक जोड़ा गया।")
+                st.rerun()
+            else:
+                st.error("Name और HRMS ID अनिवार्य (Required) हैं।")
+
+# --- TAB 3: UPDATE & DELETE ---
 with tab3:
-    st.header("✏️ रिकॉर्ड अपडेट या डिलीट करें")
+    st.header("✏️ रिकॉर्ड अपडेट या डिलीट")
     if not employee_df.empty:
-        names = employee_df.apply(lambda r: f"{r.get('Employee Name')} ({r.get('HRMS ID')})", axis=1).tolist()
-        sel_name = st.selectbox("कर्मचारी चुनें", names)
-        h_id = sel_name.split('(')[-1].strip(')')
+        emp_names = employee_df.apply(lambda r: f"{r.get('Employee Name')} ({r.get('HRMS ID')})", axis=1).tolist()
+        selected = st.selectbox("कर्मचारी खोजें", emp_names)
+        h_id = selected.split('(')[-1].strip(')')
         rec = employee_df[employee_df['HRMS ID'] == h_id].iloc[0]
 
-        # UPDATE FORM
-        with st.form("update_employee_form"):
-            st.warning(f"एडिट हो रहा है: {sel_name}")
-            new_vals = {}
-            cols = st.columns(3)
+        with st.form("update_form"):
+            up_vals = {}
+            u_cols = st.columns(3)
             for i, col in enumerate(ALL_COLS):
-                with cols[i % 3]:
-                    old_val = rec.get(col, "")
-                    new_vals[col] = st.text_input(col, value=str(old_val) if old_val is not None else "")
+                with u_cols[i % 3]:
+                    up_vals[col] = st.text_input(col, value=str(rec.get(col, "")), key=f"up_{col}")
             
-            submit = st.form_submit_button("💾 बदलाव सुरक्षित करें (Update)")
-            
-            if submit:
-                final_up = clean_payload_final(new_vals)
-                if final_up:
-                    db.collection(EMPLOYEE_COLLECTION).document(rec['id']).update(final_up)
-                    st.success("डेटा अपडेट हो गया!")
-                    st.rerun()
+            if st.form_submit_button("💾 अपडेट करें"):
+                db.collection(EMPLOYEE_COLLECTION).document(rec['id']).update(clean_payload(up_vals))
+                st.success("अपडेट सफल!"); st.rerun()
 
-        # DELETE SECTION (Separate from Form for safety)
         st.write("---")
-        st.subheader("⚠️ खतरनाक जोन (Danger Zone)")
-        st.write(f"क्या आप वाकई **{sel_name}** का रिकॉर्ड डिलीट करना चाहते हैं?")
-        
-        # Confirmation check for delete
-        col_del1, col_del2 = st.columns([1, 4])
-        with col_del1:
-            if st.button("🗑️ रिकॉर्ड डिलीट करें", type="secondary", help="यह रिकॉर्ड हमेशा के लिए हटा देगा"):
-                db.collection(EMPLOYEE_COLLECTION).document(rec['id']).delete()
-                st.error(f"रिकॉर्ड {sel_name} डिलीट कर दिया गया है।")
-                st.rerun()
+        if st.button("🗑️ रिकॉर्ड हमेशा के लिए डिलीट करें"):
+            db.collection(EMPLOYEE_COLLECTION).document(rec['id']).delete()
+            st.error("रिकॉर्ड डिलीट कर दिया गया है।")
+            st.rerun()
