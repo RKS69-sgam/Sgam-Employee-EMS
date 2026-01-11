@@ -4,7 +4,6 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 import json
-import re
 
 # =================================================================
 # --- 0. FIREBASE SETUP & DB FUNCTIONS ---
@@ -31,7 +30,7 @@ def initialize_firebase():
             firebase_admin.initialize_app(cred)
         return firestore.client()
     except Exception as e:
-        st.error(f"❌ Firebase कनेक्शन विफल। त्रुटि: {e}")
+        st.error(f"❌ Firebase Connection Failed: {e}")
         return None
 
 db = initialize_firebase()
@@ -50,19 +49,15 @@ def get_all_employees():
             df['PF Number'] = df['PF Number'].astype(str).fillna('')
         return df
     except Exception as e:
-        st.error(f"डेटा लाने में त्रुटि: {e}")
+        st.error(f"Error fetching data: {e}")
         return pd.DataFrame()
 
 def clean_data_for_firestore(data):
     cleaned_data = {}
     for key, value in data.items():
-        if not key or not key.strip():
-            continue 
+        if not key or not key.strip(): continue 
         if isinstance(value, str):
-            if value.strip() == "":
-                cleaned_data[key] = None
-            else:
-                cleaned_data[key] = value.strip()
+            cleaned_data[key] = value.strip() if value.strip() != "" else None
         elif pd.isna(value): 
              cleaned_data[key] = None
         else:
@@ -70,221 +65,169 @@ def clean_data_for_firestore(data):
     return cleaned_data
 
 def add_employee(employee_data):
-    if db:
-        try:
-            cleaned_data = clean_data_for_firestore(employee_data)
-            db.collection(EMPLOYEE_COLLECTION).add(cleaned_data)
-            return True 
-        except Exception as e:
-            st.error(f"नया रिकॉर्ड जोड़ने में त्रुटि: {e}")
-            return False 
+    try:
+        cleaned_data = clean_data_for_firestore(employee_data)
+        db.collection(EMPLOYEE_COLLECTION).add(cleaned_data)
+        return True 
+    except Exception as e:
+        st.error(f"Error adding: {e}"); return False 
 
-def update_employee(firestore_doc_id, updated_data):
-    if db:
-        try:
-            cleaned_data = clean_data_for_firestore(updated_data)
-            final_update_data = {}
-            for key, value in cleaned_data.items():
-                if value is None:
-                    final_update_data[key] = firestore.DELETE_FIELD
-                else:
-                    final_update_data[key] = value
-            if not final_update_data:
-                 return True
-            doc_ref = db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id)
-            doc_ref.update(final_update_data) 
-            return True 
-        except Exception as e:
-            st.error(f"रिकॉर्ड अपडेट करने में त्रुटि: {e}")
-            return False 
-    return False
-
-def delete_employee(firestore_doc_id):
-    if db:
-        try:
-            db.collection(EMPLOYEE_COLLECTION).document(firestore_doc_id).delete()
-            return True
-        except Exception as e:
-            st.error(f"रिकॉर्ड हटाने में त्रुटि: {e}")
-            return False
-    return False
+def update_employee(doc_id, updated_data):
+    try:
+        cleaned_data = clean_data_for_firestore(updated_data)
+        final_data = {k: (v if v is not None else firestore.DELETE_FIELD) for k, v in cleaned_data.items()}
+        db.collection(EMPLOYEE_COLLECTION).document(doc_id).update(final_data)
+        return True 
+    except Exception as e:
+        st.error(f"Error updating: {e}"); return False 
 
 # =================================================================
-# --- 1. STREAMLIT APP START ---
+# --- 1. STREAMLIT CONFIG & AUTH ---
 # =================================================================
 
-st.set_page_config(layout="wide", page_title="कर्मचारी प्रबंधन प्रणाली (Firestore)")
+st.set_page_config(layout="wide", page_title="Railway HRMS Firestore")
 EMPLOYEE_ID_KEY = 'HRMS ID' 
 DOC_ID_KEY = 'id' 
 
-def login_form():
-    st.title("🔒 लॉगिन आवश्यक")
-    if 'app_auth' not in st.secrets:
-        st.error("❌ 'app_auth' Secrets में नहीं मिला।")
-        st.stop()
-    USERNAME = st.secrets["app_auth"].get("username", "admin")
-    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@4321") 
-    with st.form("login_form"):
-        username_input = st.text_input("यूजरनेम")
-        password_input = st.text_input("पासवर्ड", type="password")
-        if st.form_submit_button("प्रवेश करें"):
-            if username_input == USERNAME and password_input == PASSWORD:
-                st.session_state['authenticated'] = True
-                st.rerun() 
-            else:
-                st.error("❌ गलत विवरण।")
-
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
+if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
 
 if not st.session_state['authenticated']:
-    login_form()
+    st.title("🔒 Login")
+    USERNAME = st.secrets["app_auth"].get("username", "admin")
+    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@4321")
+    with st.form("login"):
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        if st.form_submit_button("Enter"):
+            if u == USERNAME and p == PASSWORD:
+                st.session_state['authenticated'] = True; st.rerun()
+            else: st.error("Wrong credentials")
     st.stop()
-    
-st.title("👨‍💼 Cloud Firestore कर्मचारी प्रबंधन प्रणाली")
 
-@st.cache_data(ttl=300)
-def load_employee_data():
-    return get_all_employees()
+# --- Load Data ---
+employee_df = get_all_employees()
 
-employee_df = load_employee_data()
-
-if st.sidebar.button("🚪 लॉग आउट"):
-    st.session_state['authenticated'] = False
-    st.rerun()
-
-ALL_COLUMNS = [
-    'S. No.', 'PF Number', EMPLOYEE_ID_KEY, 'Seniority No.', 'Unit', 'Employee Name', 'FATHER\'S NAME', 
-    'Designation', 'STATION', 'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'Employee Name in Hindi', 
-    'SF-11 short name', 'Gender ', 'Category', 'Designation in Hindi', 'Posting status', 
-    'APPOINTMENT TYPE', 'PRMOTION DATE', 'DOR', 'Medical category', 'LAST PME', 'PME DUE', 
-    'MEDICAL PLACE', 'LAST TRAINING', 'TRAINING DUE', 'SERVICE REMARK', 'EMPTYPE', 
-    'PRAN', 'PENSIONACCNO', 'RAIL QUARTER NO.', 'CUG NUMBER', 'E-Number', 'UNIT No.', 
-    'SICK FROM Date', 'PF No.', DOC_ID_KEY
-]
-
-# --- Tab Navigation ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 वर्तमान स्थिति", "➕ नया कर्मचारी जोड़ें", "✏️ अपडेट/हटाएँ", "📈 रिपोर्ट"])
+# --- Tab Setup ---
+tab1, tab2, tab3, tab4 = st.tabs(["📊 वर्तमान स्थिति (Summary)", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ", "📈 रिपोर्ट"])
 
 # ===================================================================
-# --- 1. वर्तमान स्थिति (READ) with Summary ---
+# --- TAB 1: SUMMARY & VIEW ---
 # ===================================================================
 with tab1:
-    st.header("📋 कर्मचारी डैशबोर्ड और वर्तमान स्थिति")
-    
+    st.header("📋 डैशबोर्ड सारांश")
     if not employee_df.empty:
-        # --- 1. Summary Metrics ---
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("कुल कर्मचारी (Total)", len(employee_df))
+        # Metrics
+        c1, c2, c3 = st.columns(3)
+        c1.metric("कुल कर्मचारी", len(employee_df))
+        if 'Designation' in employee_df.columns:
+            counts = employee_df['Designation'].value_counts()
+            c2.metric("मुख्य पद", f"{counts.index[0]} ({counts.iloc[0]})")
         
-        with col2:
-            if 'Designation' in employee_df.columns:
-                counts = employee_df['Designation'].value_counts()
-                top_desig = counts.index[0] if not counts.empty else "N/A"
-                st.metric("शीर्ष पद (Top Desig.)", f"{top_desig} ({counts.iloc[0]})")
-        
-        with col3:
-            if 'PME DUE' in employee_df.columns:
-                # Sirf unhe gine jinka PME due date bhara hua hai
-                pme_filled = employee_df['PME DUE'].dropna().apply(lambda x: str(x).strip() != "").sum()
-                st.metric("PME Records", pme_filled)
-
-        st.markdown("---")
-        
-        # --- 2. PME Due Table ---
-        st.subheader("⚠️ PME Due होने वाले कर्मचारी")
+        # PME Alerts
+        st.subheader("⚠️ PME Due Alerts")
         if 'PME DUE' in employee_df.columns:
-            # Filter rows jahan PME record hai
-            pme_df = employee_df[employee_df['PME DUE'].notna() & (employee_df['PME DUE'] != "")].copy()
-            if not pme_df.empty:
-                st.dataframe(pme_df[['Employee Name', 'Designation', 'STATION', 'PME DUE']], hide_index=True, use_container_width=True)
-            else:
-                st.info("PME Due की कोई जानकारी नहीं मिली।")
-        
-        st.markdown("---")
+            pme_alerts = employee_df[employee_df['PME DUE'].notna() & (employee_df['PME DUE'] != "")]
+            if not pme_alerts.empty:
+                st.dataframe(pme_alerts[['Employee Name', 'Designation', 'PME DUE']], hide_index=True)
+            else: st.info("कोई PME पेंडिंग नहीं है।")
 
-        # --- 3. All Employees Table ---
-        st.subheader("📝 सभी कर्मचारियों की विस्तृत सूची")
-        display_cols = [col for col in ALL_COLUMNS if col in employee_df.columns]
-        st.dataframe(employee_df[display_cols], width='stretch', hide_index=True)
-        
-        csv_data = employee_df.to_csv(index=False, encoding='utf-8').encode('utf-8')
-        st.download_button("डाउनलोड CSV", csv_data, "employees.csv", "text/csv")
-    else:
-        st.info("डेटाबेस खाली है।")
+        st.divider()
+        st.subheader("📝 पूरी सूची")
+        st.dataframe(employee_df.drop(columns=[DOC_ID_KEY], errors='ignore'), use_container_width=True)
+    else: st.info("डेटाबेस खाली है।")
 
 # ===================================================================
-# --- 2. नया कर्मचारी जोड़ें (CREATE) ---
+# --- TAB 2: ADD EMPLOYEE (ALL COLUMNS) ---
 # ===================================================================
 with tab2:
-    st.header("नया कर्मचारी जोड़ें")
-    # Dropdown Options
-    df_temp = employee_df.copy()
-    DESIG_OPTS = sorted(df_temp['Designation'].dropna().unique().tolist()) if 'Designation' in df_temp.columns else []
-    UNIT_OPTS = sorted(df_temp['Unit'].dropna().unique().tolist()) if 'Unit' in df_temp.columns else []
-    NEW_FLAG = "➕ नया दर्ज करें"
+    st.header("➕ नया कर्मचारी डेटा प्रविष्टि")
+    with st.form("full_add_form"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            n_name = st.text_input("Employee Name*")
+            n_id = st.text_input("HRMS ID*")
+            n_pf = st.text_input("PF Number")
+            n_fname = st.text_input("Father's Name")
+            n_gen = st.selectbox("Gender", ["Male", "Female", "Other"])
+        with col2:
+            n_desig = st.text_input("Designation")
+            n_stat = st.text_input("Station")
+            n_unit = st.text_input("Unit")
+            n_pay = st.text_input("Pay Level")
+            n_basic = st.number_input("Basic Pay", value=0)
+        with col3:
+            n_dob = st.date_input("DOB", value=None)
+            n_doa = st.date_input("DOA", value=None)
+            n_dor = st.date_input("DOR", value=None)
+            n_pme = st.date_input("PME DUE", value=None)
+            n_med = st.text_input("Medical Category")
 
-    with st.form("add_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            name = st.text_input("नाम")
-            hrms = st.text_input("HRMS ID")
-            desig_sel = st.selectbox("पद", [None, NEW_FLAG] + DESIG_OPTS)
-            desig = st.text_input("नया पद दर्ज करें") if desig_sel == NEW_FLAG else desig_sel
-        with c2:
-            pf = st.text_input("PF Number")
-            unit_sel = st.selectbox("यूनिट", [None, NEW_FLAG] + UNIT_OPTS)
-            unit = st.text_input("नई यूनिट दर्ज करें") if unit_sel == NEW_FLAG else unit_sel
-            pme_due = st.date_input("PME Due Date", value=None)
+        st.subheader("अन्य विवरण (Other Details)")
+        oa, ob, oc = st.columns(3)
+        n_cug = oa.text_input("CUG Number")
+        n_pran = ob.text_input("PRAN")
+        n_qtr = oc.text_input("Rail Quarter No.")
 
-        if st.form_submit_button("✅ सुरक्षित करें"):
-            if name and hrms:
-                new_data = {
-                    "Employee Name": name, "HRMS ID": hrms, "Designation": desig,
-                    "PF Number": pf, "Unit": unit, "PME DUE": str(pme_due) if pme_due else None,
-                    "created_at": firestore.SERVER_TIMESTAMP
+        if st.form_submit_button("✅ डेटाबेस में जोड़ें"):
+            if n_name and n_id:
+                data = {
+                    "Employee Name": n_name, "HRMS ID": n_id, "PF Number": n_pf, "FATHER'S NAME": n_fname,
+                    "Gender ": n_gen, "Designation": n_desig, "STATION": n_stat, "Unit": n_unit,
+                    "PAY LEVEL": n_pay, "BASIC PAY": n_basic, "DOB": str(n_dob), "DOA": str(n_doa),
+                    "DOR": str(n_dor), "PME DUE": str(n_pme), "Medical category": n_med,
+                    "CUG NUMBER": n_cug, "PRAN": n_pran, "RAIL QUARTER NO.": n_qtr
                 }
-                if add_employee(new_data):
-                    st.success("सफलतापूर्वक जोड़ा गया!"); st.cache_data.clear(); st.rerun()
-            else:
-                st.error("नाम और HRMS ID अनिवार्य हैं।")
+                if add_employee(data): 
+                    st.success("सफलतापूर्वक जोड़ा गया!"); st.cache_data.clear(); st.rerun()
+            else: st.error("Name and HRMS ID are mandatory!")
 
 # ===================================================================
-# --- 3. अपडेट/हटाएँ (UPDATE/DELETE) ---
+# --- TAB 3: UPDATE / DELETE (ALL COLUMNS) ---
 # ===================================================================
 with tab3:
     if not employee_df.empty:
-        emp_list = employee_df.apply(lambda r: f"{r['Employee Name']} ({r[EMPLOYEE_ID_KEY]})", axis=1).tolist()
-        selected = st.selectbox("कर्मचारी चुनें", emp_list)
-        sel_id = selected.split('(')[-1].strip(')')
-        curr = employee_df[employee_df[EMPLOYEE_ID_KEY] == sel_id].iloc[0]
+        sel_name = st.selectbox("Select Employee to Update", 
+                                employee_df.apply(lambda r: f"{r['Employee Name']} ({r[EMPLOYEE_ID_KEY]})", axis=1))
+        emp_id = sel_name.split('(')[-1].strip(')')
+        row = employee_df[employee_df[EMPLOYEE_ID_KEY] == emp_id].iloc[0]
 
-        with st.form("update_form"):
-            u_name = st.text_input("नाम", value=curr.get('Employee Name', ''))
-            u_pme = st.text_input("PME DUE", value=curr.get('PME DUE', ''))
+        with st.form("full_update_form"):
+            u1, u2, u3 = st.columns(3)
+            # Pre-filling all fields
+            up_name = u1.text_input("Name", value=row.get('Employee Name', ''))
+            up_desig = u2.text_input("Designation", value=row.get('Designation', ''))
+            up_stat = u3.text_input("Station", value=row.get('STATION', ''))
+            
+            up_pf = u1.text_input("PF Number", value=row.get('PF Number', ''))
+            up_unit = u2.text_input("Unit", value=row.get('Unit', ''))
+            up_pay = u3.text_input("Pay Level", value=row.get('PAY LEVEL', ''))
+            
+            up_pme = u1.text_input("PME DUE (YYYY-MM-DD)", value=row.get('PME DUE', ''))
+            up_cug = u2.text_input("CUG", value=row.get('CUG NUMBER', ''))
+            up_qtr = u3.text_input("Quarter No", value=row.get('RAIL QUARTER NO.', ''))
+
             if st.form_submit_button("✏️ अपडेट करें"):
-                if update_employee(curr[DOC_ID_KEY], {"Employee Name": u_name, "PME DUE": u_pme}):
-                    st.success("अपडेट सफल!"); st.cache_data.clear(); st.rerun()
+                update_data = {
+                    "Employee Name": up_name, "Designation": up_desig, "STATION": up_stat,
+                    "PF Number": up_pf, "Unit": up_unit, "PAY LEVEL": up_pay,
+                    "PME DUE": up_pme, "CUG NUMBER": up_cug, "RAIL QUARTER NO.": up_qtr
+                }
+                if update_employee(row[DOC_ID_KEY], update_data):
+                    st.success("Update Successful!"); st.cache_data.clear(); st.rerun()
         
-        if st.button("🗑️ रिकॉर्ड हटाएं"):
-            if delete_employee(curr[DOC_ID_KEY]):
-                st.success("हटाया गया!"); st.cache_data.clear(); st.rerun()
-    else:
-        st.info("कोई डेटा नहीं।")
+        if st.button("🗑️ इस कर्मचारी को डिलीट करें", type="secondary"):
+             db.collection(EMPLOYEE_COLLECTION).document(row[DOC_ID_KEY]).delete()
+             st.success("Deleted!"); st.cache_data.clear(); st.rerun()
+    else: st.info("No records to edit.")
 
 # ===================================================================
-# --- 4. रिपोर्ट (REPORT) ---
+# --- TAB 4: REPORTS ---
 # ===================================================================
 with tab4:
-    st.header("विश्लेषण")
+    st.header("📈 वितरण रिपोर्ट")
     if not employee_df.empty:
-        st.subheader("पद के अनुसार संख्या (Designation Wise)")
-        if 'Designation' in employee_df.columns:
-            st.bar_chart(employee_df['Designation'].value_counts())
-        
-        st.subheader("यूनिट के अनुसार संख्या (Unit Wise)")
-        if 'Unit' in employee_df.columns:
-            st.write(employee_df['Unit'].value_counts())
-    else:
-        st.info("रिपोर्ट के लिए डेटा उपलब्ध नहीं है।")
+        c_a, c_b = st.columns(2)
+        c_a.write("पद के अनुसार वितरण")
+        c_a.bar_chart(employee_df['Designation'].value_counts())
+        c_b.write("यूनिट के अनुसार वितरण")
+        c_b.bar_chart(employee_df['Unit'].value_counts())
