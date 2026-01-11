@@ -176,7 +176,7 @@ def login_form():
         st.stop()
         
     USERNAME = st.secrets["app_auth"].get("username", "admin")
-    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@1234") 
+    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@4321") 
 
     with st.form("login_form"):
         st.subheader("लॉग इन करें")
@@ -647,3 +647,4 @@ with tab4:
         )
     else:
         st.info("कोई कर्मचारी रिकॉर्ड नहीं मिला।")
+
