@@ -33,20 +33,19 @@ def initialize_firebase():
 db = initialize_firebase()
 
 # =================================================================
-# --- 1. DATA CLEANING (Unnamed Column Fix) ---
+# --- 1. SAFE DATA CLEANING (Unnamed Column Fix) ---
 # =================================================================
 def clean_payload_for_firestore(raw_dict):
     """
-    Yeh function 'Unnamed' columns aur empty keys ko 
-    Firestore mein jaane se rokta hai.
+    Khaali keys aur 'Unnamed' columns ko filter karta hai taki 
+    Firestore crash na ho.
     """
     clean_data = {}
     for key, val in raw_dict.items():
-        # 1. Check ki key khali na ho
-        # 2. Check ki key 'Unnamed' se shuru na ho
+        # Check: Key khali nahi honi chahiye aur 'Unnamed' se shuru nahi honi chahiye
         key_str = str(key).strip()
         if key_str and not key_str.startswith('Unnamed'):
-            # Khali values ko None (Null) mein badlein
+            # Khali values ko None (Null) banayein taki database clean rahe
             v_str = str(val).strip() if val is not None else ""
             clean_data[key_str] = v_str if v_str != "" else None
     return clean_data
@@ -73,7 +72,7 @@ if not st.session_state['authenticated']:
     st.stop()
 
 # =================================================================
-# --- 3. MAIN APP ---
+# --- 3. CORE LOGIC ---
 # =================================================================
 def get_data():
     docs = db.collection(EMPLOYEE_COLLECTION).stream()
@@ -86,7 +85,7 @@ def get_data():
 
 employee_df = get_data()
 
-# Header List (Aapki file ke anusar)
+# Aapki file ke sahi headers ki list
 ALL_COLS = [
     'S. No.', 'Employee Name', 'Employee Name in Hindi', 'HRMS ID', 'PF Number', 
     'FATHER\'S NAME', 'Designation', 'Designation in Hindi', 'Unit', 'STATION', 
@@ -100,10 +99,11 @@ ALL_COLS = [
 tab1, tab2, tab3 = st.tabs(["📊 डैशबोर्ड", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ"])
 
 with tab1:
-    st.header("📋 मास्टर लिस्ट")
     if not employee_df.empty:
+        st.subheader("📋 मास्टर लिस्ट")
+        # CSV Download button for backup
         csv = employee_df.drop(columns=['id'], errors='ignore').to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("📥 डेटा डाउनलोड करें (Excel Format)", csv, "Employees.csv", "text/csv")
+        st.download_button("📥 डेटाबेस CSV डाउनलोड करें", csv, "Railway_Employees.csv", "text/csv")
         st.dataframe(employee_df.drop(columns=['id'], errors='ignore'), use_container_width=True)
 
 with tab3:
@@ -115,14 +115,21 @@ with tab3:
         rec = employee_df[employee_df['HRMS ID'] == h_id].iloc[0]
 
         with st.form("update_form"):
+            st.info(f"Editing: {sel}")
             new_vals = {}
             cols = st.columns(3)
             for i, c_name in enumerate(ALL_COLS):
                 with cols[i % 3]:
-                    new_vals[c_name] = st.text_input(c_name, value=str(rec.get(c_name, "")))
+                    # Purana data load karein
+                    old_val = rec.get(c_name, "")
+                    new_vals[c_name] = st.text_input(c_name, value=str(old_val) if old_val is not None else "")
 
-            if st.form_submit_button("💾 अपडेट करें"):
-                # UNNAMED COLUMN FIX: Yahan filter apply ho raha hai
+            if st.form_submit_button("💾 अपडेट सुरक्षित करें"):
+                # ERROR FIX: Yahan 'Unnamed' aur 'Empty' keys filter ho rahi hain
                 final_data = clean_payload_for_firestore(new_vals)
-                db.collection(EMPLOYEE_COLLECTION).document(rec['id']).update(final_data)
-                st.success("डेटा अपडेट हो गया!"); st.rerun()
+                try:
+                    db.collection(EMPLOYEE_COLLECTION).document(rec['id']).update(final_data)
+                    st.success("डेटा सफलतापूर्वक अपडेट हो गया!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Firestore Update Error: {e}")
