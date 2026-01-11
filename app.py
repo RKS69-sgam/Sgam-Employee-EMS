@@ -30,7 +30,7 @@ def initialize_firebase():
             firebase_admin.initialize_app(cred)
         return firestore.client()
     except Exception as e:
-        st.error(f"❌ Firebase Connection Failed: {e}")
+        st.error(f"❌ Firebase Error: {e}")
         return None
 
 db = initialize_firebase()
@@ -49,8 +49,7 @@ def get_all_employees():
             df['PF Number'] = df['PF Number'].astype(str).fillna('')
         return df
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
-        return pd.DataFrame()
+        st.error(f"Error: {e}"); return pd.DataFrame()
 
 def clean_data_for_firestore(data):
     cleaned_data = {}
@@ -64,170 +63,153 @@ def clean_data_for_firestore(data):
             cleaned_data[key] = value
     return cleaned_data
 
-def add_employee(employee_data):
-    try:
-        cleaned_data = clean_data_for_firestore(employee_data)
-        db.collection(EMPLOYEE_COLLECTION).add(cleaned_data)
-        return True 
-    except Exception as e:
-        st.error(f"Error adding: {e}"); return False 
-
-def update_employee(doc_id, updated_data):
-    try:
-        cleaned_data = clean_data_for_firestore(updated_data)
-        final_data = {k: (v if v is not None else firestore.DELETE_FIELD) for k, v in cleaned_data.items()}
-        db.collection(EMPLOYEE_COLLECTION).document(doc_id).update(final_data)
-        return True 
-    except Exception as e:
-        st.error(f"Error updating: {e}"); return False 
-
 # =================================================================
-# --- 1. STREAMLIT CONFIG & AUTH ---
+# --- 1. CONFIG & AUTH ---
 # =================================================================
 
-st.set_page_config(layout="wide", page_title="Railway HRMS Firestore")
+st.set_page_config(layout="wide", page_title="Railway Management")
 EMPLOYEE_ID_KEY = 'HRMS ID' 
 DOC_ID_KEY = 'id' 
+NEW_FLAG = "➕ नया दर्ज करें"
 
 if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
-
 if not st.session_state['authenticated']:
     st.title("🔒 Login")
-    USERNAME = st.secrets["app_auth"].get("username", "admin")
-    PASSWORD = st.secrets["app_auth"].get("password", "Sgam@4321")
     with st.form("login"):
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.form_submit_button("Enter"):
-            if u == USERNAME and p == PASSWORD:
+            if u == st.secrets["app_auth"]["username"] and p == st.secrets["app_auth"]["password"]:
                 st.session_state['authenticated'] = True; st.rerun()
-            else: st.error("Wrong credentials")
     st.stop()
 
-# --- Load Data ---
+# --- Load Data & Options ---
 employee_df = get_all_employees()
 
+def get_opts(col):
+    if not employee_df.empty and col in employee_df.columns:
+        return sorted([str(x) for x in employee_df[col].dropna().unique() if str(x).strip() != ""])
+    return []
+
 # --- Tab Setup ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 वर्तमान स्थिति (Summary)", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ", "📈 रिपोर्ट"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 वर्तमान स्थिति", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ", "📈 रिपोर्ट"])
 
 # ===================================================================
 # --- TAB 1: SUMMARY & VIEW ---
 # ===================================================================
 with tab1:
-    st.header("📋 डैशबोर्ड सारांश")
+    st.header("📋 कर्मचारी सारांश (Summary Dashboard)")
     if not employee_df.empty:
-        # Metrics
         c1, c2, c3 = st.columns(3)
         c1.metric("कुल कर्मचारी", len(employee_df))
         if 'Designation' in employee_df.columns:
             counts = employee_df['Designation'].value_counts()
             c2.metric("मुख्य पद", f"{counts.index[0]} ({counts.iloc[0]})")
         
-        # PME Alerts
         st.subheader("⚠️ PME Due Alerts")
         if 'PME DUE' in employee_df.columns:
-            pme_alerts = employee_df[employee_df['PME DUE'].notna() & (employee_df['PME DUE'] != "")]
-            if not pme_alerts.empty:
-                st.dataframe(pme_alerts[['Employee Name', 'Designation', 'PME DUE']], hide_index=True)
-            else: st.info("कोई PME पेंडिंग नहीं है।")
-
+            pme_list = employee_df[employee_df['PME DUE'].notna() & (employee_df['PME DUE'] != "")]
+            st.dataframe(pme_list[['Employee Name', 'Designation', 'PME DUE']], hide_index=True)
+        
         st.divider()
         st.subheader("📝 पूरी सूची")
-        st.dataframe(employee_df.drop(columns=[DOC_ID_KEY], errors='ignore'), use_container_width=True)
+        st.dataframe(employee_df.drop(columns=[DOC_ID_KEY]), use_container_width=True)
     else: st.info("डेटाबेस खाली है।")
 
 # ===================================================================
-# --- TAB 2: ADD EMPLOYEE (ALL COLUMNS) ---
+# --- TAB 2: ADD (ALL COLUMNS WITH DROPDOWNS) ---
 # ===================================================================
 with tab2:
-    st.header("➕ नया कर्मचारी डेटा प्रविष्टि")
-    with st.form("full_add_form"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            n_name = st.text_input("Employee Name*")
-            n_id = st.text_input("HRMS ID*")
+    st.header("➕ नया कर्मचारी जोड़ें")
+    with st.form("add_full"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            n_name = st.text_input("Name*")
+            n_hrms = st.text_input("HRMS ID*")
+            # Dropdown for Designation
+            d_sel = st.selectbox("Designation", [None, NEW_FLAG] + get_opts('Designation'))
+            n_desig = st.text_input("Enter New Designation") if d_sel == NEW_FLAG else d_sel
+        with c2:
             n_pf = st.text_input("PF Number")
-            n_fname = st.text_input("Father's Name")
-            n_gen = st.selectbox("Gender", ["Male", "Female", "Other"])
-        with col2:
-            n_desig = st.text_input("Designation")
-            n_stat = st.text_input("Station")
-            n_unit = st.text_input("Unit")
-            n_pay = st.text_input("Pay Level")
+            # Dropdown for Station
+            s_sel = st.selectbox("Station", [None, NEW_FLAG] + get_opts('STATION'))
+            n_stat = st.text_input("Enter New Station") if s_sel == NEW_FLAG else s_sel
+            # Dropdown for Unit
+            u_sel = st.selectbox("Unit", [None, NEW_FLAG] + get_opts('Unit'))
+            n_unit = st.text_input("Enter New Unit") if u_sel == NEW_FLAG else u_sel
+        with c3:
+            # Dropdown for Pay Level
+            p_sel = st.selectbox("Pay Level", [None, NEW_FLAG] + get_opts('PAY LEVEL'))
+            n_pay = st.text_input("Enter New Pay Level") if p_sel == NEW_FLAG else p_sel
             n_basic = st.number_input("Basic Pay", value=0)
-        with col3:
-            n_dob = st.date_input("DOB", value=None)
-            n_doa = st.date_input("DOA", value=None)
-            n_dor = st.date_input("DOR", value=None)
             n_pme = st.date_input("PME DUE", value=None)
-            n_med = st.text_input("Medical Category")
 
-        st.subheader("अन्य विवरण (Other Details)")
-        oa, ob, oc = st.columns(3)
-        n_cug = oa.text_input("CUG Number")
-        n_pran = ob.text_input("PRAN")
-        n_qtr = oc.text_input("Rail Quarter No.")
+        st.subheader("अतिरिक्त विवरण (Additional Details)")
+        a1, a2, a3 = st.columns(3)
+        n_fname = a1.text_input("Father's Name")
+        n_dob = a1.date_input("DOB", value=None)
+        n_doa = a2.date_input("DOA", value=None)
+        n_dor = a2.date_input("DOR", value=None)
+        n_med = a3.text_input("Medical Category")
+        n_cug = a3.text_input("CUG Number")
 
         if st.form_submit_button("✅ डेटाबेस में जोड़ें"):
-            if n_name and n_id:
-                data = {
-                    "Employee Name": n_name, "HRMS ID": n_id, "PF Number": n_pf, "FATHER'S NAME": n_fname,
-                    "Gender ": n_gen, "Designation": n_desig, "STATION": n_stat, "Unit": n_unit,
-                    "PAY LEVEL": n_pay, "BASIC PAY": n_basic, "DOB": str(n_dob), "DOA": str(n_doa),
-                    "DOR": str(n_dor), "PME DUE": str(n_pme), "Medical category": n_med,
-                    "CUG NUMBER": n_cug, "PRAN": n_pran, "RAIL QUARTER NO.": n_qtr
-                }
-                if add_employee(data): 
-                    st.success("सफलतापूर्वक जोड़ा गया!"); st.cache_data.clear(); st.rerun()
-            else: st.error("Name and HRMS ID are mandatory!")
+            if n_name and n_hrms:
+                data = clean_data_for_firestore({
+                    "Employee Name": n_name, "HRMS ID": n_hrms, "PF Number": n_pf,
+                    "Designation": n_desig, "STATION": n_stat, "Unit": n_unit,
+                    "PAY LEVEL": n_pay, "BASIC PAY": n_basic, "PME DUE": str(n_pme),
+                    "FATHER'S NAME": n_fname, "DOB": str(n_dob), "DOA": str(n_doa),
+                    "DOR": str(n_dor), "Medical category": n_med, "CUG NUMBER": n_cug
+                })
+                db.collection(EMPLOYEE_COLLECTION).add(data)
+                st.success("Added!"); st.cache_data.clear(); st.rerun()
+            else: st.error("Name & HRMS ID required")
 
 # ===================================================================
-# --- TAB 3: UPDATE / DELETE (ALL COLUMNS) ---
+# --- TAB 3: UPDATE (ALL COLUMNS WITH DROPDOWNS) ---
 # ===================================================================
 with tab3:
     if not employee_df.empty:
-        sel_name = st.selectbox("Select Employee to Update", 
-                                employee_df.apply(lambda r: f"{r['Employee Name']} ({r[EMPLOYEE_ID_KEY]})", axis=1))
-        emp_id = sel_name.split('(')[-1].strip(')')
-        row = employee_df[employee_df[EMPLOYEE_ID_KEY] == emp_id].iloc[0]
+        sel = st.selectbox("Select Employee", employee_df.apply(lambda r: f"{r['Employee Name']} ({r[EMPLOYEE_ID_KEY]})", axis=1))
+        row = employee_df[employee_df[EMPLOYEE_ID_KEY] == sel.split('(')[-1].strip(')')].iloc[0]
 
-        with st.form("full_update_form"):
+        with st.form("edit_full"):
             u1, u2, u3 = st.columns(3)
-            # Pre-filling all fields
-            up_name = u1.text_input("Name", value=row.get('Employee Name', ''))
-            up_desig = u2.text_input("Designation", value=row.get('Designation', ''))
-            up_stat = u3.text_input("Station", value=row.get('STATION', ''))
+            # Designation Dropdown in Update
+            d_up_sel = u1.selectbox("Update Designation", [row.get('Designation'), NEW_FLAG] + get_opts('Designation'))
+            up_desig = u1.text_input("New Designation") if d_up_sel == NEW_FLAG else d_up_sel
             
-            up_pf = u1.text_input("PF Number", value=row.get('PF Number', ''))
-            up_unit = u2.text_input("Unit", value=row.get('Unit', ''))
-            up_pay = u3.text_input("Pay Level", value=row.get('PAY LEVEL', ''))
+            # Station Dropdown in Update
+            s_up_sel = u2.selectbox("Update Station", [row.get('STATION'), NEW_FLAG] + get_opts('STATION'))
+            up_stat = u2.text_input("New Station") if s_up_sel == NEW_FLAG else s_up_sel
             
-            up_pme = u1.text_input("PME DUE (YYYY-MM-DD)", value=row.get('PME DUE', ''))
-            up_cug = u2.text_input("CUG", value=row.get('CUG NUMBER', ''))
-            up_qtr = u3.text_input("Quarter No", value=row.get('RAIL QUARTER NO.', ''))
+            # Unit Dropdown in Update
+            u_up_sel = u3.selectbox("Update Unit", [row.get('Unit'), NEW_FLAG] + get_opts('Unit'))
+            up_unit = u3.text_input("New Unit") if u_up_sel == NEW_FLAG else u_up_sel
 
+            # Other Fields
+            up_name = u1.text_input("Name", value=row.get('Employee Name', ''))
+            up_pme = u2.text_input("PME DUE (YYYY-MM-DD)", value=row.get('PME DUE', ''))
+            up_basic = u3.text_input("Basic Pay", value=str(row.get('BASIC PAY', '0')))
+            
             if st.form_submit_button("✏️ अपडेट करें"):
-                update_data = {
-                    "Employee Name": up_name, "Designation": up_desig, "STATION": up_stat,
-                    "PF Number": up_pf, "Unit": up_unit, "PAY LEVEL": up_pay,
-                    "PME DUE": up_pme, "CUG NUMBER": up_cug, "RAIL QUARTER NO.": up_qtr
-                }
-                if update_employee(row[DOC_ID_KEY], update_data):
-                    st.success("Update Successful!"); st.cache_data.clear(); st.rerun()
+                up_data = clean_data_for_firestore({
+                    "Employee Name": up_name, "Designation": up_desig, 
+                    "STATION": up_stat, "Unit": up_unit, "PME DUE": up_pme, "BASIC PAY": up_basic
+                })
+                db.collection(EMPLOYEE_COLLECTION).document(row[DOC_ID_KEY]).update(up_data)
+                st.success("Updated!"); st.cache_data.clear(); st.rerun()
         
-        if st.button("🗑️ इस कर्मचारी को डिलीट करें", type="secondary"):
-             db.collection(EMPLOYEE_COLLECTION).document(row[DOC_ID_KEY]).delete()
-             st.success("Deleted!"); st.cache_data.clear(); st.rerun()
-    else: st.info("No records to edit.")
+        if st.button("🗑️ हटाएँ"):
+            db.collection(EMPLOYEE_COLLECTION).document(row[DOC_ID_KEY]).delete()
+            st.success("Deleted!"); st.cache_data.clear(); st.rerun()
 
 # ===================================================================
 # --- TAB 4: REPORTS ---
 # ===================================================================
 with tab4:
-    st.header("📈 वितरण रिपोर्ट")
+    st.header("📈 पद और यूनिट विश्लेषण")
     if not employee_df.empty:
-        c_a, c_b = st.columns(2)
-        c_a.write("पद के अनुसार वितरण")
-        c_a.bar_chart(employee_df['Designation'].value_counts())
-        c_b.write("यूनिट के अनुसार वितरण")
-        c_b.bar_chart(employee_df['Unit'].value_counts())
+        st.bar_chart(employee_df['Designation'].value_counts())
+        st.write(employee_df['Unit'].value_counts())
