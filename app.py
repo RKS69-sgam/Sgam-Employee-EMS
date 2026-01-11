@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
-import json
 
 # =================================================================
 # --- 0. FIREBASE SETUP ---
@@ -13,123 +11,90 @@ EMPLOYEE_COLLECTION = "employees"
 
 @st.cache_resource
 def initialize_firebase():
-    try:
-        if not firebase_admin._apps:
+    if not firebase_admin._apps:
+        try:
             if st.secrets.get("firebase_config"):
-                final_credentials = dict(st.secrets["firebase_config"])
-                if isinstance(final_credentials.get('private_key'), str):
-                     final_credentials['private_key'] = final_credentials['private_key'].replace('\\n', '\n')
-                cred = credentials.Certificate(final_credentials)
+                cred = credentials.Certificate(dict(st.secrets["firebase_config"]))
             else:
-                with open(SERVICE_ACCOUNT_FILE) as f:
-                    service_account_info = json.load(f)
-                cred = credentials.Certificate(service_account_info)
+                cred = credentials.Certificate(SERVICE_ACCOUNT_FILE)
             firebase_admin.initialize_app(cred)
-        return firestore.client()
-    except Exception as e:
-        st.error(f"❌ Firebase Error: {e}")
-        return None
+        except Exception as e:
+            st.error(f"Firebase Init Error: {e}")
+    return firestore.client()
 
 db = initialize_firebase()
 
 # =================================================================
-# --- 1. SAFE DATA CLEANING (Unnamed Column Fix) ---
+# --- 1. THE FIX: CLEANING FUNCTION ---
 # =================================================================
-def clean_payload_for_firestore(raw_dict):
+def get_clean_payload(raw_data):
     """
-    Khaali keys aur 'Unnamed' columns ko filter karta hai taki 
-    Firestore crash na ho.
+    ValueError: Empty element ko fix karne ke liye function.
+    Yeh khali keys aur 'Unnamed' columns ko nikal deta hai.
     """
-    clean_data = {}
-    for key, val in raw_dict.items():
-        # Check: Key khali nahi honi chahiye aur 'Unnamed' se shuru nahi honi chahiye
-        key_str = str(key).strip()
-        if key_str and not key_str.startswith('Unnamed'):
-            # Khali values ko None (Null) banayein taki database clean rahe
-            v_str = str(val).strip() if val is not None else ""
-            clean_data[key_str] = v_str if v_str != "" else None
-    return clean_data
+    clean_dict = {}
+    for k, v in raw_data.items():
+        key_str = str(k).strip()
+        # 1. Check ki key khali na ho
+        # 2. Check ki key 'Unnamed' se shuru na ho
+        if key_str and not key_str.startswith("Unnamed"):
+            # Value ko string mein badlein aur khali hone par None (Null) karein
+            val_str = str(v).strip() if v is not None else ""
+            clean_dict[key_str] = val_str if val_str != "" else None
+    return clean_dict
 
 # =================================================================
-# --- 2. AUTHENTICATION (admin / Sgam@4321) ---
+# --- 2. UI & UPDATE LOGIC ---
 # =================================================================
-st.set_page_config(layout="wide", page_title="Railway Management")
+st.title("🚀 Railway Employee Management")
 
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-
-if not st.session_state['authenticated']:
-    st.title("🔒 लॉगिन (Login)")
-    with st.form("login"):
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.form_submit_button("प्रवेश करें"):
-            if u == "admin" and p == "Sgam@4321":
-                st.session_state['authenticated'] = True
-                st.rerun()
-            else:
-                st.error("❌ गलत विवरण")
-    st.stop()
-
-# =================================================================
-# --- 3. CORE LOGIC ---
-# =================================================================
+# Data Fetching
 def get_data():
     docs = db.collection(EMPLOYEE_COLLECTION).stream()
-    data = []
-    for doc in docs:
-        d = doc.to_dict()
-        d['id'] = doc.id
-        data.append(d)
+    data = [ {**doc.to_dict(), 'id': doc.id} for doc in docs ]
     return pd.DataFrame(data)
 
-employee_df = get_data()
+df = get_data()
 
-# Aapki file ke sahi headers ki list
+# Aapki file ke headers (Exact list)
 ALL_COLS = [
     'S. No.', 'Employee Name', 'Employee Name in Hindi', 'HRMS ID', 'PF Number', 
-    'FATHER\'S NAME', 'Designation', 'Designation in Hindi', 'Unit', 'STATION', 
-    'PAY LEVEL', 'BASIC PAY', 'DOB', 'DOA', 'DOR', 'Seniority No.', 'Category', 
-    'Medical category', 'PME DUE', 'LAST PME', 'TRAINING DUE', 'LAST TRAINING', 
-    'PRMOTION DATE', 'PRAN', 'Gender ', 'CUG NUMBER', 'RAIL QUARTER NO.', 
-    'Posting status', 'APPOINTMENT TYPE', 'EMPTYPE', 'PENSIONACCNO', 'E-Number', 
-    'UNIT No.', 'SICK FROM Date', 'SERVICE REMARK', 'MEDICAL PLACE', 'SF-11 short name'
+    'FATHER\'S NAME', 'Designation', 'Unit', 'STATION', 'PAY LEVEL', 'BASIC PAY', 
+    'DOB', 'DOA', 'DOR', 'Seniority No.', 'Category', 'Medical category', 
+    'PME DUE', 'LAST PME', 'TRAINING DUE', 'LAST TRAINING', 'PRMOTION DATE', 
+    'PRAN', 'Gender ', 'CUG NUMBER', 'RAIL QUARTER NO.', 'Posting status', 
+    'APPOINTMENT TYPE', 'EMPTYPE', 'E-Number'
 ]
 
-tab1, tab2, tab3 = st.tabs(["📊 डैशबोर्ड", "➕ नया कर्मचारी", "✏️ अपडेट/हटाएँ"])
+if not df.empty:
+    st.subheader("✏️ रिकॉर्ड अपडेट करें")
+    search_list = df.apply(lambda r: f"{r.get('Employee Name')} ({r.get('HRMS ID')})", axis=1).tolist()
+    selected_emp = st.selectbox("कर्मचारी चुनें", search_list)
+    
+    # Selected record nikaalein
+    h_id = selected_emp.split('(')[-1].strip(')')
+    record = df[df['HRMS ID'] == h_id].iloc[0]
 
-with tab1:
-    if not employee_df.empty:
-        st.subheader("📋 मास्टर लिस्ट")
-        # CSV Download button for backup
-        csv = employee_df.drop(columns=['id'], errors='ignore').to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("📥 डेटाबेस CSV डाउनलोड करें", csv, "Railway_Employees.csv", "text/csv")
-        st.dataframe(employee_df.drop(columns=['id'], errors='ignore'), use_container_width=True)
+    with st.form("update_form"):
+        updated_values = {}
+        cols = st.columns(3)
+        
+        for i, col_name in enumerate(ALL_COLS):
+            with cols[i % 3]:
+                # Old value dikhayein
+                current_val = record.get(col_name, "")
+                updated_values[col_name] = st.text_input(col_name, value=str(current_val))
 
-with tab3:
-    st.header("✏️ रिकॉर्ड अपडेट")
-    if not employee_df.empty:
-        names = employee_df.apply(lambda r: f"{r.get('Employee Name')} ({r.get('HRMS ID')})", axis=1).tolist()
-        sel = st.selectbox("कर्मचारी चुनें", names)
-        h_id = sel.split('(')[-1].strip(')')
-        rec = employee_df[employee_df['HRMS ID'] == h_id].iloc[0]
-
-        with st.form("update_form"):
-            st.info(f"Editing: {sel}")
-            new_vals = {}
-            cols = st.columns(3)
-            for i, c_name in enumerate(ALL_COLS):
-                with cols[i % 3]:
-                    # Purana data load karein
-                    old_val = rec.get(c_name, "")
-                    new_vals[c_name] = st.text_input(c_name, value=str(old_val) if old_val is not None else "")
-
-            if st.form_submit_button("💾 अपडेट सुरक्षित करें"):
-                # ERROR FIX: Yahan 'Unnamed' aur 'Empty' keys filter ho rahi hain
-                final_data = clean_payload_for_firestore(new_vals)
+        if st.form_submit_button("💾 सुरक्षित करें"):
+            # ERROR PREVENTER: Payload clean karein
+            final_payload = get_clean_payload(updated_values)
+            
+            if final_payload:
                 try:
-                    db.collection(EMPLOYEE_COLLECTION).document(rec['id']).update(final_data)
-                    st.success("डेटा सफलतापूर्वक अपडेट हो गया!")
+                    db.collection(EMPLOYEE_COLLECTION).document(record['id']).update(final_payload)
+                    st.success("डेटा अपडेट हो गया!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Firestore Update Error: {e}")
+                    st.error(f"Firestore Error: {e}")
+            else:
+                st.warning("अपडेट करने के लिए कोई मान्य डेटा नहीं मिला।")
